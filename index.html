@@ -541,10 +541,10 @@ const AMAP_SECURITY = "98640a3e50e2273c144b44f5f9ccc4f1";   // ← 安全密钥�
  * 登录用「邮箱免密 Magic Link」：填邮箱 → 收一封带登录链接的邮件 → 点击即登录。
  * 数据读写由 RLS（行级权限）保护：每人只能增删改自己的记录。
  * ============================================================ */
-const SUPABASE_URL      = "https://YOUR-PROJECT.supabase.co";  // ← 填你的 Supabase Project URL
-const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLISHABLE-KEY";          // ← 填你的 anon / publishable key
+const SUPABASE_URL      = "https://ujieveellyuvmunqxrwk.supabase.co";  // ← 填你的 Supabase Project URL
+const SUPABASE_ANON_KEY = "sb_publishable_7xKF9pdqN_wPJnxdCqg1bg_f0DpiHa4";          // ← 填你的 anon / publishable key
 
-const supabase = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY)
+const supabaseClient = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
@@ -1447,9 +1447,9 @@ function toClientPoint(row) {
 }
 
 async function loadRemotePoints() {
-  if (!supabase) return;
+  if (!supabaseClient) return;
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from("emotion_points")
       .select("*")
       .order("created_at", { ascending: false })
@@ -1462,27 +1462,27 @@ async function loadRemotePoints() {
 }
 
 async function syncPointToBackend(p) {
-  if (!supabase || !authUserId) return;
+  if (!supabaseClient || !authUserId) return;
   try {
-    const { error } = await supabase.from("emotion_points").insert(pointRow(p));
+    const { error } = await supabaseClient.from("emotion_points").insert(pointRow(p));
     if (error) throw error;
     await loadRemotePoints();
   } catch (e) {}
 }
 
 async function updatePointInBackend(p) {
-  if (!supabase || !authUserId) return;
+  if (!supabaseClient || !authUserId) return;
   try {
-    const { error } = await supabase.from("emotion_points").update(pointRow(p)).eq("id", p.id);
+    const { error } = await supabaseClient.from("emotion_points").update(pointRow(p)).eq("id", p.id);
     if (error) throw error;
     await loadRemotePoints();
   } catch (e) {}
 }
 
 async function deletePointFromBackend(id) {
-  if (!supabase || !authUserId) return;
+  if (!supabaseClient || !authUserId) return;
   try {
-    const { error } = await supabase.from("emotion_points").delete().eq("id", id);
+    const { error } = await supabaseClient.from("emotion_points").delete().eq("id", id);
     if (error) throw error;
     await loadRemotePoints();
   } catch (e) {}
@@ -1643,11 +1643,11 @@ function closeLogin() { loginModal.classList.remove("show"); }
 async function sendMagicLink() {
   const email = authEmail.value.trim();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { authErr("请填写有效的邮箱。", false); return; }
-  if (!supabase) { authErr("登录服务还没配置好（缺 SUPABASE_URL / SUPABASE_ANON_KEY）。", false); return; }
+  if (!supabaseClient) { authErr("登录服务还没配置好（缺 SUPABASE_URL / SUPABASE_ANON_KEY）。", false); return; }
   loginSubmit.disabled = true;
   authErr("正在发送登录链接…", true);
   try {
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabaseClient.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.origin + window.location.pathname },
     });
@@ -2000,7 +2000,7 @@ homeExport.addEventListener("click", exportPoints);
 homeImport.addEventListener("click", () => importFile.click());
 importFile.addEventListener("change", () => importPointsFile(importFile.files && importFile.files[0]));
 homeLogout.addEventListener("click", async () => {
-  if (supabase) await supabase.auth.signOut();
+  if (supabaseClient) await supabaseClient.auth.signOut();
   applySession(null);
   if (map) renderSavedMarkers();
   closeHome();
@@ -2010,11 +2010,11 @@ document.addEventListener("keydown", (e) => {
 });
 
 // 恢复会话（含魔法链接跳转回来后的 token 解析）+ 监听登录状态变化
-if (supabase) {
-  supabase.auth.getSession().then(({ data, error }) => {
+if (supabaseClient) {
+  supabaseClient.auth.getSession().then(({ data, error }) => {
     if (!error) applySession(data && data.session);
   }).catch(() => {});
-  supabase.auth.onAuthStateChange((event, session) => {
+  supabaseClient.auth.onAuthStateChange((event, session) => {
     applySession(session);
     if (event === "SIGNED_IN") closeLogin();
     if (event === "SIGNED_OUT") closeHome();
