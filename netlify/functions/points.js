@@ -57,7 +57,8 @@ async function supabaseFetch(path, options = {}) {
     err.statusCode = 503;
     throw err;
   }
-  const res = await fetch(`${url.replace(/\/$/, '')}/rest/v1/${path}`, {
+  const requestUrl = `${url.replace(/\/$/, '')}/rest/v1/${path}`;
+  const res = await fetch(requestUrl, {
     ...options,
     headers: {
       apikey: key,
@@ -68,6 +69,12 @@ async function supabaseFetch(path, options = {}) {
   });
   const text = await res.text();
   if (!res.ok) {
+    console.error('[supabase] request failed', {
+      status: res.status,
+      statusText: res.statusText,
+      path: requestUrl.replace(url.replace(/\/$/, ''), ''),
+      body: text,
+    });
     const err = new Error(text || `Supabase request failed: ${res.status}`);
     err.statusCode = res.status;
     throw err;
@@ -110,6 +117,6 @@ exports.handler = async (event) => {
     return json(405, { error: 'Method not allowed.' });
   } catch (err) {
     const statusCode = err.statusCode || 500;
-    return json(statusCode, { error: statusCode === 503 ? err.message : 'Database request failed.' });
+    return json(statusCode, { error: 'Database request failed.' });
   }
 };
