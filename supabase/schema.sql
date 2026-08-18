@@ -23,6 +23,10 @@ create table if not exists public.emotion_points (
   color2 text,
   note text default '',
   display_name text default '',
+  country text,
+  province text,
+  city text,
+  district text,
   emotion_date date,
   captured_at timestamptz default now(),
   created_at timestamptz default now(),
@@ -30,18 +34,22 @@ create table if not exists public.emotion_points (
 );
 
 alter table public.emotion_points
-  add column if not exists display_name text default '';
+  add column if not exists display_name text default '',
+  add column if not exists country text,
+  add column if not exists province text,
+  add column if not exists city text,
+  add column if not exists district text;
 
 create index if not exists emotion_points_user_id_idx
   on public.emotion_points(user_id);
 
--- 深圳大致范围（沿用旧后端校验）：经度 113.4~115.2，纬度 21.8~23.2。
+-- 公开坐标仅校验合法经纬度范围，不再锁死深圳/中国，方便未来扩展。
 -- NOT VALID：只约束之后的新增/修改，不扫描既有历史数据。
 alter table public.emotion_points
   drop constraint if exists emotion_points_bbox_check;
 alter table public.emotion_points
   add constraint emotion_points_bbox_check
-  check (lng between 113.4 and 115.2 and lat between 21.8 and 23.2)
+  check (lng between -180 and 180 and lat between -90 and 90)
   not valid;
 
 alter table public.emotion_points enable row level security;

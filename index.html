@@ -839,6 +839,7 @@ let savedMarkers = [];
 let seedMarkers = [];
 let remoteMarkers = [];
 let draftMarker = null, draftPos = null;
+let draftAdmin = null;
 let editingId = null;
 let picking = false;
 let geocoder = null;
@@ -866,6 +867,11 @@ function renderPoint(p) {
       p.lat = pos.getLat();
       saveAll();
       updatePointInBackend(p);
+      reverseGeocode(p.lng, p.lat, function (name, admin) {
+        Object.assign(p, admin || {});
+        saveAll();
+        updatePointInBackend(p);
+      });
     });
   }
   marker.on("click", () => {
@@ -945,16 +951,14 @@ function setDemoHidden(hidden) {
   updateDemoToggle();
   if (map) {
     renderSeedMarkers();
-    const markers = visibleMarkers();
-    if (markers.length) map.setFitView(markers, false, [70, 70, 70, 70]);
   }
   updateCounter();
 }
 
 function init() {
   map = new AMap.Map("map", {
-    center: [114.04, 22.56],
-    zoom: 11,
+    center: [104.1954, 35.8617],
+    zoom: 4,
     mapStyle: "amap://styles/dark",
     showLabel: false,
     zoomEnable: true,
@@ -963,9 +967,8 @@ function init() {
 
   renderSeedMarkers();
   renderSavedMarkers();
-  const markers = visibleMarkers();
-  if (markers.length) map.setFitView(markers, false, [70, 70, 70, 70]);
   loadRemotePoints();
+  focusBrowserLocation(false);
   map.on("click", function (e) {
     if (picking) {
       setPicking(false);
@@ -1003,8 +1006,6 @@ function setupSearch() {
 
   AMap.plugin("AMap.PlaceSearch", function () {
     placeSearch = new AMap.PlaceSearch({
-      city: "深圳",
-      citylimit: true,
       pageSize: 10,
       pageIndex: 1,
     });
@@ -1046,7 +1047,12 @@ function setupSearch() {
     if (isNaN(lng) || isNaN(lat)) return;
     hideResults();
     input.value = item.dataset.name || "";
-    placeDraft(lng, lat, item.dataset.name || "");
+    placeDraft(lng, lat, item.dataset.name || "", {
+      country: item.dataset.country || null,
+      province: item.dataset.province || null,
+      city: item.dataset.city || null,
+      district: item.dataset.district || null,
+    });
   });
 
   document.getElementById("map").addEventListener("click", hideResults);
@@ -1058,9 +1064,12 @@ function renderResults(pois) {
     const pos = locOf(poi);
     const lng = pos ? pos.lng : "";
     const lat = pos ? pos.lat : "";
+    const admin = adminFromPoi(poi);
     const addr = [poi.pname, poi.cityname, poi.adname, poi.address]
       .filter(function (x) { return x && x !== poi.name; }).join(" · ");
-    return `<div class="res-item" data-lng="${lng}" data-lat="${lat}" data-name="${escapeHtml(poi.name || "")}">
+    return `<div class="res-item" data-lng="${lng}" data-lat="${lat}" data-name="${escapeHtml(poi.name || "")}"
+      data-country="${escapeHtml(admin.country || "")}" data-province="${escapeHtml(admin.province || "")}"
+      data-city="${escapeHtml(admin.city || "")}" data-district="${escapeHtml(admin.district || "")}">
       <div class="res-name">${escapeHtml(poi.name || "")}</div>
       <div class="res-addr">${escapeHtml(addr)}</div>
     </div>`;
@@ -1107,9 +1116,25 @@ function locOf(poi) {
   return { lng, lat };
 }
 
+function cleanAdminValue(v) {
+  if (Array.isArray(v)) v = v[0] || "";
+  v = String(v == null ? "" : v).trim();
+  return v || null;
+}
+
+function adminFromPoi(poi) {
+  return {
+    country: (poi && (poi.pname || poi.cityname || poi.adname)) ? "中国" : null,
+    province: cleanAdminValue(poi && poi.pname),
+    city: cleanAdminValue(poi && poi.cityname),
+    district: cleanAdminValue(poi && poi.adname),
+  };
+}
+
 function placeDraftMarker(lng, lat) {
   if (draftMarker) draftMarker.setMap(null);
   draftPos = { lng, lat };
+  draftAdmin = null;
 
   draftMarker = new AMap.Marker({
     position: [lng, lat],
@@ -1121,15 +1146,24 @@ function placeDraftMarker(lng, lat) {
   draftMarker.on("dragend", function (e) {
     const p = e.target.getPosition();
     draftPos = { lng: p.lng, lat: p.lat };
+    reverseGeocode(draftPos.lng, draftPos.lat, function (name, admin) {
+      draftAdmin = admin || null;
+      if (name && panel.classList.contains("show") && !nameInput.value.trim()) nameInput.value = name;
+    });
   });
   draftMarker.setMap(map);
 }
 
-function placeDraft(lng, lat, name) {
+function placeDraft(lng, lat, name, admin) {
   placeDraftMarker(lng, lat);
+  draftAdmin = admin || null;
   map.setCenter([lng, lat]);
   map.setZoom(16);
   openPanel(name);
+  reverseGeocode(lng, lat, function (resolvedName, resolvedAdmin) {
+    draftAdmin = resolvedAdmin || draftAdmin;
+    if (resolvedName && panel.classList.contains("show") && !nameInput.value.trim()) nameInput.value = resolvedName;
+  });
 }
 
 /* ============================================================
@@ -1148,7 +1182,8 @@ function handlePick(lng, lat) {
   map.setCenter([lng, lat]);
   map.setZoom(16);
   openPanel("");
-  reverseGeocode(lng, lat, function (name) {
+  reverseGeocode(lng, lat, function (name, admin) {
+    draftAdmin = admin || null;
     if (name && panel.classList.contains("show") && !editingId && !nameInput.value.trim()) {
       nameInput.value = name;
     }
@@ -1158,10 +1193,10 @@ function handlePick(lng, lat) {
 function reverseGeocode(lng, lat, cb) {
   if (!AMAP_SECURITY) { cb(null); return; }
   AMap.plugin("AMap.Geocoder", function () {
-    if (!geocoder) geocoder = new AMap.Geocoder({ city: "深圳" });
+    if (!geocoder) geocoder = new AMap.Geocoder();
     geocoder.getAddress([lng, lat], function (status, result) {
       if (status === "complete" && result.regeocode) {
-        cb(placeNameFrom(result.regeocode));
+        cb(placeNameFrom(result.regeocode), adminFromRegeocode(result.regeocode));
       } else {
         cb(null);
       }
@@ -1179,6 +1214,16 @@ function placeNameFrom(re) {
     return sn.number ? sn.street + sn.number + "号" : sn.street;
   }
   return re.formattedAddress || "";
+}
+
+function adminFromRegeocode(re) {
+  const ac = re.addressComponent || {};
+  return {
+    country: cleanAdminValue(ac.country) || "中国",
+    province: cleanAdminValue(ac.province),
+    city: cleanAdminValue(ac.city) || cleanAdminValue(ac.province),
+    district: cleanAdminValue(ac.district),
+  };
 }
 
 /* ============================================================
@@ -1437,6 +1482,12 @@ function openEditPanel(p) {
   updateEmotionPreview();
   ipError.style.display = "none";
   placeDraftMarker(p.lng, p.lat);
+  draftAdmin = {
+    country: p.country || null,
+    province: p.province || null,
+    city: p.city || null,
+    district: p.district || null,
+  };
   map.setCenter([p.lng, p.lat]);
   map.setZoom(16);
   panel.classList.add("show");
@@ -1446,6 +1497,7 @@ function closePanel() {
   panel.classList.remove("show");
   if (draftMarker) { draftMarker.setMap(null); draftMarker = null; }
   draftPos = null;
+  draftAdmin = null;
 }
 
 // 前端点 → Supabase 行（user_id 来自当前登录用户，RLS 校验 auth.uid() = user_id）
@@ -1464,6 +1516,10 @@ function pointRow(p) {
     emotion_date: p.time || null,
     captured_at: p.capturedAt || new Date().toISOString(),
     display_name: p.displayName || profileName(authUserId) || "",
+    country: p.country || null,
+    province: p.province || null,
+    city: p.city || null,
+    district: p.district || null,
     user_id: authUserId,
   };
 }
@@ -1484,6 +1540,10 @@ function toClientPoint(row) {
     time: row.emotion_date || "",
     capturedAt: row.captured_at || row.created_at,
     displayName: row.display_name || "",
+    country: row.country || null,
+    province: row.province || null,
+    city: row.city || null,
+    district: row.district || null,
     user_id: row.user_id || null,
   };
 }
@@ -1533,25 +1593,42 @@ async function deletePointFromBackend(id) {
 emotionInput.addEventListener("input", updateEmotionPreview);
 emotionInput2.addEventListener("input", updateEmotionPreview);
 
-function useBrowserLocation() {
-  if (!navigator.geolocation) { showErr("这个浏览器不支持自动定位，可以继续用搜索或地图点选。"); return; }
-  geoBtn.disabled = true;
-  geoBtn.textContent = "定位中";
+function focusBrowserLocation(openDraft) {
+  if (!navigator.geolocation) {
+    if (openDraft) showErr("这个浏览器不支持自动定位，可以继续用搜索或地图点选。");
+    return;
+  }
+  if (openDraft) {
+    geoBtn.disabled = true;
+    geoBtn.textContent = "定位中";
+  }
   navigator.geolocation.getCurrentPosition(function (pos) {
     const lng = pos.coords.longitude;
     const lat = pos.coords.latitude;
-    placeDraftMarker(lng, lat);
-    if (map) { map.setCenter([lng, lat]); map.setZoom(16); }
-    reverseGeocode(lng, lat, function (name) {
-      if (name && !nameInput.value.trim()) nameInput.value = name;
-      geoBtn.disabled = false;
-      geoBtn.textContent = "当前位置";
+    if (openDraft) placeDraftMarker(lng, lat);
+    if (map) {
+      map.setCenter([lng, lat]);
+      map.setZoom(openDraft ? 16 : 11);
+    }
+    reverseGeocode(lng, lat, function (name, admin) {
+      if (openDraft) {
+        draftAdmin = admin || null;
+        if (name && !nameInput.value.trim()) nameInput.value = name;
+        geoBtn.disabled = false;
+        geoBtn.textContent = "当前位置";
+      }
     });
   }, function () {
-    showErr("没有拿到定位权限，可以继续用搜索或地图点选。");
-    geoBtn.disabled = false;
-    geoBtn.textContent = "当前位置";
+    if (openDraft) {
+      showErr("没有拿到定位权限，可以继续用搜索或地图点选。");
+      geoBtn.disabled = false;
+      geoBtn.textContent = "当前位置";
+    }
   }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+}
+
+function useBrowserLocation() {
+  focusBrowserLocation(true);
 }
 
 geoBtn.addEventListener("click", useBrowserLocation);
@@ -1579,6 +1656,10 @@ ipSubmit.addEventListener("click", function () {
     time: timeInput.value,
     capturedAt: new Date().toISOString(),
     displayName: profileName(authUserId) || "",
+    country: draftAdmin && draftAdmin.country,
+    province: draftAdmin && draftAdmin.province,
+    city: draftAdmin && draftAdmin.city,
+    district: draftAdmin && draftAdmin.district,
   };
 
   if (editingId) {
