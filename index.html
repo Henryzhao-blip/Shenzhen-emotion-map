@@ -700,16 +700,16 @@ function emotionText(p) {
 }
 
 /* ============================================================
- * 场景类型（43 个地点型，源自 Excel「场景」表）
+ * 场景类型：全国通用的中层分类，不绑定某个城市的生活语境。
  * ============================================================ */
 const SCENE_GROUPS = [
-  { name: "交通 · 节点", items: ["高铁站 / 火车站", "机场", "口岸 / 过关", "港口 / 码头", "地铁 / 地铁站", "公交站", "网约车 / 出租车里", "电动车后座"] },
-  { name: "自然", items: ["公园", "山", "海 / 海边"] },
-  { name: "居住", items: ["城中村", "出租屋", "天台 / 楼顶", "合租房", "老小区", "人才房 / 公租房 / 安居房"] },
-  { name: "工作", items: ["写字楼 / 工位", "会议室", "工厂车间 / 流水线", "工地 / 脚手架", "直播间", "档口 / 柜台"] },
-  { name: "商业 · 街区", items: ["商圈 / 步行街", "创意园 / 文创街区", "古城 / 老街区", "CBD / 写字楼区", "书城 / 图书馆", "菜市场 / 海鲜市场", "便利店", "奶茶店 / 咖啡店", "苍蝇馆子 / 大排档", "夜市 / 早餐摊"] },
-  { name: "公共 · 服务", items: ["医院", "核酸点 / 检测站", "学校", "自习室 / 共享自习室", "人才市场 / 劳务市场", "办事大厅"] },
-  { name: "休闲 · 其他", items: ["天桥", "洗脚店 / 理发店 / 按摩店", "网吧 / 电竞酒店", "体育馆 / 会展"] },
+  { name: "交通出行", items: ["火车站 / 高铁站", "机场", "地铁 / 公交", "打车 / 车内", "路上 / 通勤"] },
+  { name: "居住日常", items: ["家 / 住处", "小区 / 社区", "街边 / 巷子", "菜场 / 超市", "便利店"] },
+  { name: "工作学习", items: ["办公室 / 工位", "会议 / 办事", "学校 / 课堂", "自习 / 图书馆", "工厂 / 工地"] },
+  { name: "消费休闲", items: ["商场 / 商圈", "餐馆 / 小吃", "咖啡 / 茶饮", "酒吧 / 夜生活", "影院 / 展演"] },
+  { name: "自然户外", items: ["公园 / 广场", "山野 / 郊外", "河湖 / 海边", "天台 / 桥下"] },
+  { name: "公共空间", items: ["医院 / 诊所", "政务 / 服务窗口", "图书馆 / 文化馆", "体育场馆", "景点 / 老街"] },
+  { name: "其他", items: ["临时路过", "说不清"] },
 ];
 
 /* ============================================================
@@ -809,6 +809,7 @@ legendEl.innerHTML =
   ).join("");
 
 const sceneSelect = document.getElementById("sceneSelect");
+const SCENE_VALUES = new Set(SCENE_GROUPS.flatMap(g => g.items));
 for (const g of SCENE_GROUPS) {
   const og = document.createElement("optgroup");
   og.label = g.name;
@@ -818,6 +819,23 @@ for (const g of SCENE_GROUPS) {
     og.appendChild(o);
   }
   sceneSelect.appendChild(og);
+}
+
+function ensureSceneOption(scene) {
+  if (!scene || scene === "不指定" || SCENE_VALUES.has(scene)) return;
+  let legacy = sceneSelect.querySelector('optgroup[data-legacy="1"]');
+  if (!legacy) {
+    legacy = document.createElement("optgroup");
+    legacy.label = "旧分类";
+    legacy.dataset.legacy = "1";
+    sceneSelect.appendChild(legacy);
+  }
+  if (!Array.from(legacy.options).some(o => o.value === scene)) {
+    const o = document.createElement("option");
+    o.value = scene;
+    o.textContent = scene;
+    legacy.appendChild(o);
+  }
 }
 
 /* ============================================================
@@ -1478,7 +1496,9 @@ function openEditPanel(p) {
   noteInput.value = p.note || "";
   timeInput.value = p.time || "";
   updateDateField();
-  sceneSelect.value = (p.scene && p.scene !== "不指定") ? p.scene : "";
+  const sceneValue = (p.scene && p.scene !== "不指定") ? p.scene : "";
+  ensureSceneOption(sceneValue);
+  sceneSelect.value = sceneValue;
   updateEmotionPreview();
   ipError.style.display = "none";
   placeDraftMarker(p.lng, p.lat);
