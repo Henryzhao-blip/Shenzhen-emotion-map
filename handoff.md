@@ -83,9 +83,9 @@
 
 - 前端直接连 Supabase，不再走 Netlify Function。
 - 表：`public.emotion_points`，建表 SQL 在 `supabase/schema.sql`。
-- 客户端：`window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)`（supabase-js v2，CDN 加载）。
-- 配置常量在 `index.html` 顶部：`SUPABASE_URL`、`SUPABASE_ANON_KEY`。
-- `SUPABASE_ANON_KEY` 可暴露在浏览器；**切勿**填 `service_role` key。
+- 客户端：`window.supabase.createClient(PUBLIC_DB_URL, PUBLIC_DB_KEY)`（supabase-js v2，CDN 加载）。
+- 配置常量在 `index.html` 顶部：`PUBLIC_DB_URL`、`PUBLIC_DB_KEY`。
+- `PUBLIC_DB_KEY` 可暴露在浏览器；**切勿**填 `service_role` key。
 - RLS 四策略：select 公开（anon/authenticated 都可读）；insert/update/delete 仅 `authenticated` 且 `auth.uid() = user_id`。
 - 数据读写：`.from('emotion_points')` 的 select / insert / update / delete。
 - 坐标降精度：数据库列 `numeric(9,3)/numeric(8,3)` 自动四舍五入到 3 位小数（约街区/百米级）。
@@ -136,7 +136,7 @@
 2. GitHub push 后 Netlify 自动部署。
 3. 高德控制台必须把 Netlify 域名加入 key 的域名白名单，否则地图/搜索可能失败。
 4. Supabase 建库：打开 Supabase SQL Editor，运行 `supabase/schema.sql`（建表 + RLS + 授权）。
-5. 填 `index.html` 顶部 `SUPABASE_URL` + `SUPABASE_ANON_KEY`（anon key，不是 `service_role`）。
+5. 填 `index.html` 顶部 `PUBLIC_DB_URL` + `PUBLIC_DB_KEY`（public key，不是 `service_role`）。
 6. Supabase Auth 配置：启用 Email（Magic Link）；把 Site URL 和 Redirect URLs 设成 Netlify 域名。
 7. 收不到登录邮件时：确认邮箱没进垃圾箱、Supabase 的 Email 模板/发送限额正常。
 

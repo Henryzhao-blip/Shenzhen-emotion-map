@@ -36,10 +36,10 @@ It creates `public.emotion_points` with:
 
 Fill in two values at the top of `index.html`:
 
-- `SUPABASE_URL` — your Supabase project URL (e.g. `https://xxxx.supabase.co`)
-- `SUPABASE_ANON_KEY` — your anon / publishable key
+- `PUBLIC_DB_URL` — your Supabase project URL (e.g. `https://xxxx.supabase.co`)
+- `PUBLIC_DB_KEY` — your public publishable key
 
-The anon key is safe to expose in the browser. Do **not** paste your `service_role` key.
+The public key is safe to expose in the browser. Do **not** paste your `service_role` key.
 
 ### 3. Enable email magic-link login
 

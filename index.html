@@ -536,16 +536,16 @@ const AMAP_SECURITY = "98640a3e50e2273c144b44f5f9ccc4f1";   // ← 安全密钥�
 /* ============================================================
  * Supabase（Auth + 数据库）
  * 在这里填你的 Supabase 项目信息：
- *   SUPABASE_URL      — Project URL（形如 https://xxxx.supabase.co）
- *   SUPABASE_ANON_KEY — anon / publishable key（可暴露在浏览器，切勿填 service_role）
+ *   PUBLIC_DB_URL      — Project URL（形如 https://xxxx.supabase.co）
+ *   PUBLIC_DB_KEY — public publishable key（可暴露在浏览器，切勿填 service_role）
  * 登录用「邮箱免密 Magic Link」：填邮箱 → 收一封带登录链接的邮件 → 点击即登录。
  * 数据读写由 RLS（行级权限）保护：每人只能增删改自己的记录。
  * ============================================================ */
-const SUPABASE_URL      = "https://ujieveellyuvmunqxrwk.supabase.co";  // ← 填你的 Supabase Project URL
-const SUPABASE_ANON_KEY = "sb_publishable_7xKF9pdqN_wPJnxdCqg1bg_f0DpiHa4";          // ← 填你的 anon / publishable key
+const PUBLIC_DB_URL      = "https://ujieveellyuvmunqxrwk.supabase.co";  // ← 填你的 Supabase Project URL
+const PUBLIC_DB_KEY = "sb_publishable_7xKF9pdqN_wPJnxdCqg1bg_f0DpiHa4";          // ← 填你的 public publishable key
 
-const supabaseClient = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY)
-  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+const supabaseClient = (window.supabase && PUBLIC_DB_URL && PUBLIC_DB_KEY)
+  ? window.supabase.createClient(PUBLIC_DB_URL, PUBLIC_DB_KEY)
   : null;
 
 /* ============================================================
@@ -1643,7 +1643,7 @@ function closeLogin() { loginModal.classList.remove("show"); }
 async function sendMagicLink() {
   const email = authEmail.value.trim();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { authErr("请填写有效的邮箱。", false); return; }
-  if (!supabaseClient) { authErr("登录服务还没配置好（缺 SUPABASE_URL / SUPABASE_ANON_KEY）。", false); return; }
+  if (!supabaseClient) { authErr("登录服务还没配置好（缺 PUBLIC_DB_URL / PUBLIC_DB_KEY）。", false); return; }
   loginSubmit.disabled = true;
   authErr("正在发送登录链接…", true);
   try {
