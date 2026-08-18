@@ -334,8 +334,19 @@
     display: flex; align-items: center; justify-content: center; font-size: 26px;
     background: rgba(255,255,255,0.06); border: 1px solid var(--line);
   }
+  .home-id { min-width: 0; }
   .home-id h2 { margin: 0; font-size: 18px; }
   .home-id .tag { font-size: 12px; color: var(--accent); margin-top: 3px; }
+  .profile-row { display: flex; gap: 8px; margin-top: 10px; max-width: 320px; }
+  .profile-row input {
+    flex: 1; min-width: 0; padding: 8px 10px; border-radius: 9px; font-size: 13px;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--line); color: var(--text); outline: none;
+  }
+  .profile-row input:focus { border-color: rgba(34,211,238,0.5); }
+  .profile-row button {
+    flex: 0 0 auto; padding: 8px 11px; border-radius: 9px; font-size: 12px; cursor: pointer;
+    background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.35); color: var(--accent);
+  }
   .home-actions { margin-left: auto; display: flex; gap: 8px; flex: 0 0 auto; }
   .home-actions button {
     padding: 8px 14px; border-radius: 10px; font-size: 13px; cursor: pointer;
@@ -503,6 +514,10 @@
       <div class="home-id">
         <h2 id="homeName">我</h2>
         <div class="tag" id="homeTag">我的情绪日记 · 公共地图上匿名</div>
+        <div class="profile-row">
+          <input id="profileNameInput" type="text" maxlength="20" placeholder="给自己取一个名字" autocomplete="off" />
+          <button id="profileSave" type="button">保存</button>
+        </div>
       </div>
       <div class="home-actions">
         <button id="homeExport" type="button">导出</button>
@@ -543,6 +558,7 @@ const AMAP_SECURITY = "98640a3e50e2273c144b44f5f9ccc4f1";   // ← 安全密钥�
  * ============================================================ */
 const PUBLIC_DB_URL      = "https://ujieveellyuvmunqxrwk.supabase.co";  // ← 填你的 Supabase Project URL
 const PUBLIC_DB_KEY = "sb_publishable_7xKF9pdqN_wPJnxdCqg1bg_f0DpiHa4";          // ← 填你的 public publishable key
+const PUBLIC_SITE_URL = "https://gleaming-sable-42a882.netlify.app";     // ← Supabase 邮箱登录回跳地址
 
 const supabaseClient = (window.supabase && PUBLIC_DB_URL && PUBLIC_DB_KEY)
   ? window.supabase.createClient(PUBLIC_DB_URL, PUBLIC_DB_KEY)
@@ -743,6 +759,7 @@ const SEED_POINTS = [
  * ============================================================ */
 const LS_KEY = "sz_emotion_map_points_v1";
 const LS_DEMO_HIDDEN_KEY = "sz_emotion_map_demo_hidden_v1";
+const LS_PROFILE_KEY = "sz_emotion_map_profiles_v1";
 function loadSaved() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { return []; }
 }
@@ -754,6 +771,20 @@ function loadDemoHidden() {
 }
 function saveDemoHidden(v) {
   try { localStorage.setItem(LS_DEMO_HIDDEN_KEY, v ? "1" : "0"); } catch (e) {}
+}
+function loadProfiles() {
+  try { return JSON.parse(localStorage.getItem(LS_PROFILE_KEY)) || {}; } catch (e) { return {}; }
+}
+function saveProfileName(userId, name) {
+  if (!userId) return;
+  const profiles = loadProfiles();
+  profiles[userId] = Object.assign({}, profiles[userId] || {}, { name: name });
+  try { localStorage.setItem(LS_PROFILE_KEY, JSON.stringify(profiles)); } catch (e) {}
+}
+function profileName(userId) {
+  if (!userId) return "";
+  const p = loadProfiles()[userId];
+  return p && p.name ? p.name : "";
 }
 
 let savedPoints = loadSaved();
@@ -1597,6 +1628,8 @@ const homeLogout = document.getElementById("homeLogout");
 const homeExport = document.getElementById("homeExport");
 const homeImport = document.getElementById("homeImport");
 const importFile = document.getElementById("importFile");
+const profileNameInput = document.getElementById("profileNameInput");
+const profileSave = document.getElementById("profileSave");
 
 let authUserId = null;        // 当前 Supabase 登录用户 id（未登录为 null）
 let currentUserEmail = null;  // 当前登录邮箱
@@ -1604,7 +1637,9 @@ let currentUserEmail = null;  // 当前登录邮箱
 function isAuthed() { return !!authUserId; }
 
 function currentProfile() {
-  return authUserId ? { name: currentUserEmail || "我", emoji: "🌗" } : null;
+  if (!authUserId) return null;
+  const name = profileName(authUserId) || currentUserEmail || "我";
+  return { name: name, emoji: "🌗" };
 }
 
 // 一个点是否属于当前登录用户（本地备份算作本浏览器自己的点）
@@ -1624,6 +1659,7 @@ function applySession(session) {
   currentUserEmail = (session && session.user) ? (session.user.email || "") : null;
   updateAuthorBtn();
   if (map) renderRemoteMarkers();
+  if (homeView.classList.contains("show")) renderHome();
 }
 
 function authErr(msg, info) {
@@ -1639,6 +1675,12 @@ function openLogin() {
 }
 function closeLogin() { loginModal.classList.remove("show"); }
 
+function authRedirectTo() {
+  const local = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
+  const base = local ? PUBLIC_SITE_URL : (window.location.origin + window.location.pathname);
+  return base.replace(/\/$/, "");
+}
+
 // 邮箱免密登录：发一封带登录链接的邮件
 async function sendMagicLink() {
   const email = authEmail.value.trim();
@@ -1649,7 +1691,7 @@ async function sendMagicLink() {
   try {
     const { error } = await supabaseClient.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin + window.location.pathname },
+      options: { emailRedirectTo: authRedirectTo() },
     });
     if (error) { authErr("发送失败：" + (error.message || "请稍后再试"), false); return; }
     authErr("已发送登录链接到 " + email + "，去邮箱点一下即可进入。", true);
@@ -1825,6 +1867,7 @@ function renderHome() {
   document.getElementById("homeAvatar").textContent = prof ? prof.emoji : "🌗";
   document.getElementById("homeName").textContent = prof ? prof.name : "我";
   document.getElementById("homeTag").textContent = "我的情绪日记 · 公共地图上匿名";
+  profileNameInput.value = authUserId ? profileName(authUserId) : "";
 
   // 只看「我」的每一笔（本地点 + 云端属于我的点，最新的在前，无日期的排最后）
   const pts = savedPoints.concat(remotePoints.filter(isMine)).slice().sort((a, b) => {
@@ -1999,6 +2042,15 @@ homeClose.addEventListener("click", closeHome);
 homeExport.addEventListener("click", exportPoints);
 homeImport.addEventListener("click", () => importFile.click());
 importFile.addEventListener("change", () => importPointsFile(importFile.files && importFile.files[0]));
+profileSave.addEventListener("click", () => {
+  if (!authUserId) return;
+  const name = profileNameInput.value.trim().slice(0, 20);
+  saveProfileName(authUserId, name);
+  renderHome();
+});
+profileNameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") profileSave.click();
+});
 homeLogout.addEventListener("click", async () => {
   if (supabaseClient) await supabaseClient.auth.signOut();
   applySession(null);
