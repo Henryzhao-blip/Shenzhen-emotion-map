@@ -1,0 +1,1910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>深圳情绪地图 · 空城里有共鸣</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --panel: rgba(16, 22, 32, 0.86);
+    --line: rgba(255, 255, 255, 0.08);
+    --text: #e8ecf2;
+    --dim: #9aa7b8;
+    --accent: #22d3ee;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  /* ---------- 地图 ---------- */
+  #map { position: absolute; inset: 0; background: #0a0e14; }
+
+  /* ---------- 情绪点（发光 + 呼吸） ---------- */
+  .dot { width: 16px; height: 16px; position: relative; cursor: pointer; }
+  .dot .core {
+    position: absolute; inset: 4px; border-radius: 50%;
+    background: var(--c);
+    box-shadow: 0 0 14px var(--c), 0 0 4px var(--c);
+    transition: transform .15s ease;
+  }
+  .dot:hover .core { transform: scale(1.4); }
+  .dot::before {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    border: 1px solid var(--c);
+    animation: breathe 2.8s ease-out infinite;
+  }
+  @keyframes breathe {
+    0%   { transform: scale(0.5); opacity: 0.85; }
+    100% { transform: scale(2.0); opacity: 0; }
+  }
+  .dot.active .core { animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+  /* 双色情绪点：主情绪在中心，副情绪在外圈 */
+  .dot.dual .core { box-shadow: 0 0 12px var(--c), 0 0 24px var(--c2), 0 0 42px var(--c2); }
+  .dot.dual::before { border: 2px solid var(--c2); box-shadow: 0 0 12px var(--c2), 0 0 28px var(--c2); }
+
+  /* ---------- 落点 pin（可拖动） ---------- */
+  .draft { width: 20px; height: 20px; position: relative; cursor: grab; }
+  .draft .core {
+    position: absolute; inset: 6px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent), 0 0 4px var(--accent);
+  }
+  .draft::before {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    border: 2px dashed rgba(34, 211, 238, 0.7);
+    animation: spin 6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- 顶栏 ---------- */
+  #topbar {
+    position: absolute; top: 16px; left: 16px; right: 16px; z-index: 20;
+    display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap;
+  }
+  #header {
+    padding: 12px 16px; border-radius: 14px;
+    background: var(--panel); backdrop-filter: blur(10px);
+    border: 1px solid var(--line); max-width: 300px;
+  }
+  #header h1 { margin: 0; font-size: 18px; letter-spacing: 1px; }
+  #header .sub { margin-top: 4px; font-size: 12px; color: var(--dim); line-height: 1.6; }
+
+  #searchWrap { position: relative; flex: 1 1 240px; max-width: 420px; }
+  .search-row { display: flex; gap: 8px; }
+  .search-row input { flex: 1; min-width: 0; }
+  #searchInput {
+    padding: 12px 16px; border-radius: 14px;
+    background: var(--panel); backdrop-filter: blur(10px);
+    border: 1px solid var(--line); color: var(--text); font-size: 14px; outline: none;
+  }
+  #searchBtn {
+    padding: 0 18px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--accent); color: #04222a; font-size: 14px; font-weight: 600; cursor: pointer;
+    white-space: nowrap;
+  }
+  #searchBtn:hover { filter: brightness(1.1); }
+  #searchBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+  #pickBtn {
+    display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
+    width: 44px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--panel); backdrop-filter: blur(10px);
+    color: var(--accent); cursor: pointer; padding: 0;
+  }
+  #pickBtn svg { display: block; }
+  #pickBtn:hover { filter: brightness(1.15); }
+  #pickBtn.on { background: var(--accent); color: #04222a; border-color: var(--accent); }
+  #searchInput::placeholder { color: var(--dim); }
+  #searchInput:focus { border-color: rgba(34,211,238,0.5); }
+  #secWarn {
+    display: none; margin-top: 6px; font-size: 11.5px; color: #ffd479; line-height: 1.5;
+  }
+  #results {
+    display: none; margin-top: 6px; border-radius: 12px; overflow: hidden;
+    background: #10161f; border: 1px solid var(--line); max-height: 320px; overflow-y: auto;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  #results.show { display: block; }
+  .res-item { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .res-item:hover { background: rgba(255,255,255,0.08); }
+  .res-item:last-child { border-bottom: 0; }
+  .res-name { font-size: 14px; color: var(--text); }
+  .res-addr { font-size: 11.5px; color: var(--dim); margin-top: 2px; }
+  .res-err { padding: 12px 14px; font-size: 12.5px; color: #ff8a8a; line-height: 1.6; }
+
+  /* 高德自动补全下拉，暗色化 */
+  .amap-sug, .amap-sug * { box-sizing: border-box; }
+  .amap-sug {
+    background: #10161f !important; border: 1px solid var(--line) !important;
+    border-radius: 12px !important; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.5) !important;
+  }
+  .amap-sug li { color: var(--text) !important; background: transparent !important; }
+  .amap-sug li:hover, .amap-sug li.active { background: rgba(255,255,255,0.08) !important; }
+
+  /* ---------- 底部栏 ---------- */
+  #bottombar {
+    position: absolute; bottom: 16px; left: 16px; right: 16px; z-index: 20;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .pill {
+    padding: 9px 13px; border-radius: 12px; font-size: 12.5px; color: var(--dim);
+    background: var(--panel); backdrop-filter: blur(10px); border: 1px solid var(--line);
+  }
+  #legend { display: flex; gap: 10px; align-items: center; }
+  #legend .row { display: flex; align-items: center; gap: 5px; }
+  #legend .sw { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 8px var(--c); background: var(--c); }
+  #counter b { color: #fff; font-size: 15px; margin: 0 2px; }
+  button.pill { cursor: pointer; }
+  button.pill:hover { color: var(--text); }
+
+  /* ---------- 悬停提示 ---------- */
+  #tip {
+    position: absolute; z-index: 35; pointer-events: none;
+    transform: translate(-50%, -100%);
+    padding: 7px 12px; border-radius: 10px;
+    background: rgba(16, 22, 32, 0.95); border: 1px solid var(--line);
+    backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    opacity: 0; transition: opacity .12s ease; max-width: 260px; white-space: nowrap;
+  }
+  #tip.show { opacity: 1; }
+  #tip .t-scene { font-size: 11px; color: var(--dim); margin-bottom: 3px; }
+  #tip .t-fromto { font-size: 13px; color: var(--text); }
+
+  /* ---------- 定点提示 ---------- */
+  #pickHint {
+    position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%);
+    z-index: 25; display: none; padding: 9px 18px; border-radius: 999px;
+    background: var(--accent); color: #04222a; font-size: 13px; font-weight: 600;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4); white-space: nowrap;
+  }
+  #pickHint.show { display: block; }
+
+  /* ---------- 输入面板 ---------- */
+  #inputPanel {
+    position: absolute; left: 50%; bottom: 0; transform: translateX(-50%) translateY(20px);
+    z-index: 32; width: min(94vw, 560px); max-height: 84vh; overflow-y: auto;
+    padding: 18px 20px; border-radius: 16px 16px 0 0;
+    background: rgba(16, 22, 32, 0.94); backdrop-filter: blur(16px); border: 1px solid var(--line);
+    opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease;
+  }
+  #inputPanel.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  #inputPanel .ip-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  #inputPanel .ip-head span { font-size: 15px; font-weight: 600; }
+  #inputPanel .ip-head button { border: 0; background: none; color: var(--dim); font-size: 20px; cursor: pointer; }
+  .ip-field { margin-bottom: 14px; }
+  .ip-field label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 7px; }
+  .ip-field input, .ip-field select, .ip-field textarea {
+    width: 100%; padding: 11px 13px; border-radius: 10px; font-size: 14px;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--line); color: var(--text); outline: none;
+  }
+  .ip-field input:focus, .ip-field select:focus, .ip-field textarea:focus { border-color: rgba(34,211,238,0.5); }
+  .ip-field select option { background: #10161f; color: var(--text); }
+  /* ---------- 情绪输入 + 实时颜色 ---------- */
+  .em-hint { opacity: .75; font-size: 11px; }
+  .em-row { display: flex; align-items: center; gap: 10px; }
+  .em-inputs { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .em-inputs input { width: 100%; }
+  .em-swatch {
+    flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%;
+    background: var(--c, #8a93a3);
+    box-shadow: 0 0 16px var(--c, #8a93a3), 0 0 5px var(--c, #8a93a3);
+    transition: background .2s ease, box-shadow .2s ease;
+  }
+  .em-swatch.dual { box-shadow: 0 0 18px var(--c2), 0 0 34px var(--c2), 0 0 0 3px var(--c2); }
+  .em-label { margin-top: 7px; font-size: 12px; color: var(--dim); }
+  /* ---------- 日期字段 + 自定义日历 ---------- */
+  .date-field {
+    width: 100%; padding: 12px 14px; border-radius: 10px; font-size: 15px; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--line); color: var(--text);
+    display: flex; align-items: center; justify-content: space-between; text-align: left;
+  }
+  .date-field:focus { outline: none; border-color: rgba(34,211,238,0.5); }
+  .date-field .date-cal-icon { opacity: .65; flex: 0 0 auto; }
+  #timeInput { display: none; }
+  .date-picker {
+    position: fixed; z-index: 60; width: 320px; max-width: 92vw; padding: 14px;
+    background: rgba(20, 27, 38, 0.98); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6); backdrop-filter: blur(16px);
+    display: none;
+  }
+  .date-picker.show { display: block; }
+  .dp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .dp-title { font-size: 14px; font-weight: 600; letter-spacing: .3px; cursor: pointer; user-select: none; }
+  .dp-title:hover { color: var(--accent); }
+  .dp-nav {
+    width: 34px; height: 34px; border-radius: 10px; border: 0; line-height: 1;
+    background: rgba(255,255,255,0.06); color: var(--text); font-size: 20px; cursor: pointer;
+  }
+  .dp-nav:hover { background: rgba(255,255,255,0.14); }
+  .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .dp-dow { text-align: center; font-size: 11px; color: var(--dim); padding: 8px 0 4px; }
+  .dp-empty { aspect-ratio: 1; }
+  .dp-day {
+    aspect-ratio: 1; border: 0; border-radius: 10px; background: transparent; color: var(--text);
+    font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .dp-day:hover { background: rgba(255,255,255,0.12); }
+  .dp-day.today { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
+  .dp-day.selected { background: var(--accent); color: #04222a; font-weight: 700; }
+  .dp-cell {
+    border: 0; border-radius: 10px; background: transparent; color: var(--text);
+    font-size: 14px; cursor: pointer; padding: 11px 0; text-align: center;
+  }
+  .dp-cell:hover { background: rgba(255,255,255,0.12); }
+  .dp-cell.today { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
+  .dp-cell.selected { background: var(--accent); color: #04222a; font-weight: 700; }
+  .dp-foot { display: flex; justify-content: space-between; margin-top: 12px; }
+  .dp-foot button {
+    border: 0; background: none; color: var(--dim); font-size: 13px; cursor: pointer;
+    padding: 7px 10px; border-radius: 8px;
+  }
+  .dp-foot button:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+  .t-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); margin-right: 8px; vertical-align: middle; }
+  .t-dot.dual, .hd.dual, .in-dot.dual { box-shadow: 0 0 0 2px var(--c2), 0 0 8px var(--c); }
+  #ipError { display: none; color: #ff8a8a; font-size: 12.5px; margin-bottom: 12px; }
+  .ip-actions { display: flex; gap: 10px; }
+  .ip-actions button { flex: 1; padding: 12px; border-radius: 10px; font-size: 14px; cursor: pointer; }
+  .ip-actions .ghost { background: rgba(255,255,255,0.06); border: 1px solid var(--line); color: var(--dim); }
+  .ip-actions .primary { background: var(--accent); border: 0; color: #04222a; font-weight: 600; }
+  .ip-actions .danger { background: rgba(255,138,138,0.08); border: 1px solid rgba(255,138,138,0.25); color: #ff8a8a; }
+
+  /* ---------- 无 key 提示 ---------- */
+  #keyNotice {
+    position: absolute; inset: 0; z-index: 40; display: none;
+    align-items: center; justify-content: center; text-align: center;
+    background: rgba(8, 10, 14, 0.94); padding: 24px;
+  }
+  #keyNotice .box { max-width: 460px; }
+  #keyNotice h2 { font-size: 18px; }
+  #keyNotice p { color: var(--dim); font-size: 13px; line-height: 1.8; }
+  #keyNotice code {
+    background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 6px; color: #ffd479;
+  }
+
+  /* ---------- 作者登录 + 个人主页（demo） ---------- */
+  .author-btn {
+    margin-top: 10px; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line);
+    background: rgba(255,255,255,0.05); color: var(--dim); font-size: 12px; cursor: pointer;
+  }
+  .author-btn:hover { color: var(--text); border-color: rgba(34,211,238,0.4); }
+  .author-btn.on { color: var(--accent); border-color: rgba(34,211,238,0.4); }
+
+  #loginModal, #homeView {
+    position: absolute; inset: 0; z-index: 45; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(8, 10, 14, 0.9); backdrop-filter: blur(6px); padding: 20px;
+  }
+  #loginModal.show, #homeView.show { display: flex; }
+  #loginModal .box {
+    width: min(92vw, 360px); padding: 24px; border-radius: 18px;
+    background: rgba(16, 22, 32, 0.98); border: 1px solid var(--line);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  #loginModal h2 { margin: 0 0 6px; font-size: 18px; }
+  #loginModal .sub { color: var(--dim); font-size: 12.5px; line-height: 1.6; margin-bottom: 16px; }
+  #loginModal input {
+    width: 100%; padding: 12px 14px; border-radius: 10px; font-size: 15px;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--line); color: var(--text); outline: none;
+    letter-spacing: 4px;
+  }
+  #loginModal input:focus { border-color: rgba(34,211,238,0.5); }
+  .login-actions { display: flex; gap: 10px; margin-top: 14px; }
+  .login-actions button { flex: 1; padding: 11px; border-radius: 10px; font-size: 14px; cursor: pointer; }
+  .login-actions .ghost { background: rgba(255,255,255,0.06); border: 1px solid var(--line); color: var(--dim); }
+  .login-actions .primary { background: var(--accent); border: 0; color: #04222a; font-weight: 600; }
+  #loginErr { display: none; color: #ff8a8a; font-size: 12.5px; margin-top: 12px; }
+  #loginErr.info { color: var(--accent); }
+  .login-note { margin-top: 14px; font-size: 11px; color: var(--dim); opacity: .8; line-height: 1.6; }
+  .login-note code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 5px; color: #ffd479; }
+  .emoji-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .emoji-row .emo {
+    width: 38px; height: 38px; border-radius: 10px; font-size: 20px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--line);
+  }
+  .emoji-row .emo:hover { background: rgba(255,255,255,0.12); }
+  .emoji-row .emo.on { border-color: var(--accent); background: rgba(34,211,238,0.12); }
+
+  /* 个人主页 */
+  #homeView { align-items: stretch; justify-content: center; }
+  #homeView .home {
+    width: min(94vw, 640px); max-height: 90vh; overflow-y: auto;
+    margin: 30px 0; padding: 22px 24px; border-radius: 18px;
+    background: rgba(16, 22, 32, 0.98); border: 1px solid var(--line);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .home-head { display: flex; align-items: center; gap: 14px; }
+  .home-avatar {
+    flex: 0 0 auto; width: 52px; height: 52px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 26px;
+    background: rgba(255,255,255,0.06); border: 1px solid var(--line);
+  }
+  .home-id h2 { margin: 0; font-size: 18px; }
+  .home-id .tag { font-size: 12px; color: var(--accent); margin-top: 3px; }
+  .home-actions { margin-left: auto; display: flex; gap: 8px; flex: 0 0 auto; }
+  .home-actions button {
+    padding: 8px 14px; border-radius: 10px; font-size: 13px; cursor: pointer;
+    background: rgba(255,255,255,0.06); border: 1px solid var(--line); color: var(--dim);
+  }
+  .home-actions button:hover { color: var(--text); }
+
+  .home-stats { display: flex; gap: 10px; margin: 18px 0 6px; flex-wrap: wrap; }
+  .stat { flex: 1 1 100px; padding: 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--line); }
+  .stat b { display: block; font-size: 22px; color: #fff; }
+  .stat span { font-size: 11.5px; color: var(--dim); }
+
+  .home-section-title { font-size: 12px; color: var(--dim); margin: 18px 0 10px; letter-spacing: .5px; }
+  .home-insights { display: flex; flex-direction: column; gap: 8px; }
+  .insight {
+    display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border-radius: 12px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+  }
+  .in-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-top: 3px; background: var(--c); box-shadow: 0 0 8px var(--c); }
+  .in-text { font-size: 13.5px; color: var(--text); line-height: 1.6; }
+  .in-count { color: var(--dim); font-size: 12px; }
+  .in-hint { font-size: 12px; color: var(--dim); padding: 4px 0; line-height: 1.6; }
+  .spectrum { height: 18px; border-radius: 999px; overflow: hidden; display: flex; border: 1px solid var(--line); }
+  .spectrum i { height: 100%; min-width: 2px; }
+  .spectrum-empty { display: block; font-size: 12px; color: var(--dim); padding: 8px 0; border: 0; height: auto; }
+
+  .home-list { display: flex; flex-direction: column; gap: 8px; padding-bottom: 4px; }
+  .home-item {
+    display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 12px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+  }
+  .home-item .hd { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: var(--c); box-shadow: 0 0 8px var(--c); }
+  .home-item .hi-main { flex: 1; min-width: 0; }
+  .home-item .hi-em { font-size: 13.5px; color: var(--text); }
+  .home-item .hi-sub { font-size: 11.5px; color: var(--dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .home-item .hi-date { font-size: 11px; color: var(--dim); flex: 0 0 auto; }
+  .hi-btns { display: flex; gap: 4px; flex: 0 0 auto; }
+  .hi-btns button {
+    border: 0; background: rgba(255,255,255,0.06); color: var(--dim); cursor: pointer;
+    padding: 6px 10px; border-radius: 8px; font-size: 12px;
+  }
+  .hi-btns button:hover { color: var(--text); }
+  .hi-btns .del:hover { color: #ff8a8a; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="topbar">
+  <div id="header">
+    <h1>深圳情绪地图</h1>
+    <div class="sub">把这一刻的情绪，落在城市的坐标上。<br />空城里，原来也有人在这里。</div>
+    <button id="authorBtn" class="author-btn" type="button">作者入口</button>
+  </div>
+  <div id="searchWrap">
+    <div class="search-row">
+      <input id="searchInput" placeholder="搜索一个地点，记一笔情绪…" autocomplete="off" />
+      <button id="searchBtn">搜索</button>
+      <button id="pickBtn" title="直接在地图上定点">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+      </button>
+    </div>
+    <div id="results"></div>
+    <div id="secWarn">⚠️ 地点搜索需要高德的「安全密钥」（securityJsCode）。请在高德控制台配置后，填进代码顶部 <code>AMAP_SECURITY</code>。</div>
+  </div>
+</div>
+
+<div id="bottombar">
+  <div id="legend" class="pill"></div>
+  <div id="counter" class="pill">已有 <b id="count">0</b> 个情绪</div>
+  <button id="demoToggle" class="pill" type="button">隐藏演示</button>
+</div>
+
+<div id="tip"></div>
+
+<div id="pickHint">📍 在地图上点一下，落一个点</div>
+
+<div id="inputPanel">
+  <div class="ip-head"><span id="ipTitle">记一笔</span><button id="ipClose">×</button></div>
+  <div id="ipError"></div>
+  <div class="ip-field">
+    <label>场景类型（可选）</label>
+    <select id="sceneSelect"><option value="">不指定</option></select>
+  </div>
+  <div class="ip-field">
+    <label>地点</label>
+    <input id="nameInput" placeholder="例如：深圳北站" />
+  </div>
+  <div class="ip-field">
+    <label>情绪 <span class="em-hint">（主情绪决定中心色，副情绪决定外圈光）</span></label>
+    <div class="em-row">
+      <div class="em-inputs">
+        <input id="emotionInput" placeholder="主情绪：例如 有点开心 / 焦虑" autocomplete="off" />
+        <input id="emotionInput2" placeholder="副情绪（可选）：例如 难过 / 期待" autocomplete="off" />
+      </div>
+      <div class="em-swatch" id="emSwatch"></div>
+    </div>
+    <div class="em-label" id="emLabel"></div>
+  </div>
+  <div class="ip-field">
+    <label>一句话（可选）</label>
+    <textarea id="noteInput" rows="2" placeholder="那个具体的瞬间…"></textarea>
+  </div>
+  <div class="ip-field">
+    <label>日期（可选）</label>
+    <input type="date" id="timeInput" />
+    <button type="button" id="dateField" class="date-field">
+      <span id="dateFieldText">不指定</span>
+      <svg class="date-cal-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg>
+    </button>
+  </div>
+  <div class="ip-actions">
+    <button id="ipDelete" class="danger" style="display:none">删除</button>
+    <button id="ipCancel" class="ghost">取消</button>
+    <button id="ipSubmit" class="primary">提交</button>
+  </div>
+</div>
+
+<div id="datePicker" class="date-picker">
+  <div class="dp-head">
+    <button type="button" class="dp-nav" id="dpPrev">‹</button>
+    <div class="dp-title" id="dpTitle"></div>
+    <button type="button" class="dp-nav" id="dpNext">›</button>
+  </div>
+  <div class="dp-grid" id="dpGrid"></div>
+  <div class="dp-foot">
+    <button type="button" id="dpToday">今天</button>
+    <button type="button" id="dpClear">清除日期</button>
+  </div>
+</div>
+
+<div id="keyNotice">
+  <div class="box">
+    <h2>还差一步：填两个高德密钥</h2>
+    <p>
+      打开这个 HTML，把顶部 <code>AMAP_KEY</code> 填成你的高德「Web 端（JS API）」key。<br />
+      如果要用地<span style="color:#fff">点搜索</span>，还需再填 <code>AMAP_SECURITY</code>（安全密钥）——只浏览情绪点则不用。<br />
+      申请入口：<span style="color:#9aa7b8">lbs.amap.com → 控制台 → 应用管理 → 添加 Key</span>
+    </p>
+  </div>
+</div>
+
+<div id="loginModal">
+  <div class="box">
+    <h2 id="authTitle">登录</h2>
+    <div class="sub">输入作者口令进入你的情绪日记。<br />公共地图上，没有人能知道这些点是谁的。</div>
+    <input id="authUser" type="text" placeholder="用户名（作者入口可留空）" autocomplete="off" />
+    <input id="authPw" type="password" placeholder="口令" autocomplete="off" />
+    <div class="emoji-row" id="authEmoji"></div>
+    <div id="loginErr"></div>
+    <div class="login-actions">
+      <button id="loginCancel" class="ghost" type="button">取消</button>
+      <button id="authToggle" class="ghost" type="button">去注册</button>
+      <button id="loginSubmit" class="primary" type="button">进入</button>
+    </div>
+    <div class="login-note">作者入口口令：<code>sz2026</code>。demo 账号只存在本地浏览器，纯前端校验，不是真正的安全登录。</div>
+  </div>
+</div>
+
+<div id="homeView">
+  <div class="home">
+    <div class="home-head">
+      <div class="home-avatar" id="homeAvatar">🌗</div>
+      <div class="home-id">
+        <h2 id="homeName">作者</h2>
+        <div class="tag" id="homeTag">地图作者</div>
+      </div>
+      <div class="home-actions">
+        <button id="homeExport" type="button">导出</button>
+        <button id="homeImport" type="button">导入</button>
+        <button id="homeLogout" type="button">退出</button>
+        <button id="homeClose" type="button">关闭</button>
+        <input id="importFile" type="file" accept="application/json,.json" style="display:none" />
+      </div>
+    </div>
+    <div class="home-stats" id="homeStats"></div>
+    <div class="home-section-title">情绪洞察</div>
+    <div id="homeInsights" class="home-insights"></div>
+    <div class="home-section-title">情绪光谱 · 按时间排布的每一笔颜色</div>
+    <div id="homeSpectrum" class="spectrum"></div>
+    <div class="home-section-title">我的每一笔</div>
+    <div id="homeList" class="home-list"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+ * 配置：在这里填你的高德 key
+ * 申请入口：https://lbs.amap.com → 控制台 → 应用管理 → 创建应用 → 添加「Web端(JS API)」key
+ * AMAP_KEY      必填（地图 + 标记）
+ * AMAP_SECURITY 需要地点搜索时必填（安全密钥 securityJsCode）
+ * ============================================================ */
+const AMAP_KEY      = "130eb63be3679fd58531640e3de98767";   // ← 高德 JS API key
+const AMAP_SECURITY = "98640a3e50e2273c144b44f5f9ccc4f1";   // ← 安全密钥（securityJsCode），地点搜索需要
+
+/* ============================================================
+ * 账号（本地模拟）—— demo
+ * 每个人都注册一个账号，但账号只用来「保存自己的数据」；公共地图
+ * 上谁也看不到你的 id，只知道这里有别人的各种情绪。这里全部是
+ * 纯前端的 localStorage 校验，不是真正的安全登录——上线后必须接后端。
+ * ============================================================ */
+const EMOJIS = ["🌗", "🌱", "🌊", "🔥", "🌙", "☀️", "🌧️", "🌈", "🍃", "⭐", "🌸", "🐚"];
+const AUTHOR_USER = "作者";
+const AUTHOR_PASS = "sz2026";
+const AUTHOR_EMOJI = "🌗";
+const LS_USERS_KEY = "sz_emotion_map_users_v1";      // { name: {name, pass, emoji} }
+const LS_SESSION_KEY = "sz_emotion_map_session_v1";  // 当前登录用户名
+
+/* ============================================================
+ * 走向（颜色 = 转折的方向）—— 仅作为旧数据兜底，新输入不再用
+ * ============================================================ */
+const DIR = {
+  up:        { label: "上行", color: "#FFB84D" },
+  down:      { label: "下行", color: "#4A7BFF" },
+  hollow:    { label: "中空", color: "#9AA7B1" },
+  reconcile: { label: "和解", color: "#5AD0A3" },
+  turn:      { label: "转向", color: "#B48CFF" },
+};
+
+/* ============================================================
+ * 情绪 → 颜色（纯前端词典分析）
+ * 二维情绪模型：效价 valence（-1 消极 ~ +1 积极）× 唤醒 arousal（0 平静 ~ 1 强烈）
+ * 颜色用 HSL：正效价偏橙/红，负效价偏蓝/紫，唤醒越高越饱和越亮。
+ * 注意：这是「词典 + 规则」的粗略估计，不是真正的 AI/NLP——
+ * 但完全在浏览器本地跑，不联网、不传任何文字，符合「匿名」。
+ * ============================================================ */
+const EMOTION_LEXICON = {
+  // 高唤醒 · 积极
+  "兴奋": [0.8, 0.9], "激动": [0.8, 0.95], "热血": [0.7, 0.85], "狂喜": [0.9, 0.9],
+  "亢奋": [0.7, 0.95], "振奋": [0.7, 0.8], "期待": [0.6, 0.7], "憧憬": [0.6, 0.65],
+  "惊喜": [0.8, 0.75], "感动": [0.8, 0.7], "幸福": [0.9, 0.6], "痛快": [0.7, 0.7],
+  // 高唤醒 · 消极
+  "愤怒": [-0.8, 0.9], "生气": [-0.7, 0.85], "暴躁": [-0.7, 0.85], "崩溃": [-0.85, 0.95],
+  "焦虑": [-0.7, 0.8], "烦躁": [-0.6, 0.75], "慌": [-0.6, 0.8], "恐惧": [-0.8, 0.9],
+  "害怕": [-0.75, 0.85], "委屈": [-0.7, 0.7], "嫉妒": [-0.5, 0.7], "绝望": [-0.9, 0.7],
+  "无助": [-0.7, 0.7], "压抑": [-0.7, 0.6], "煎熬": [-0.7, 0.7], "抓狂": [-0.7, 0.9],
+  // 中唤醒 · 积极
+  "开心": [0.8, 0.6], "高兴": [0.75, 0.6], "快乐": [0.8, 0.55], "满足": [0.7, 0.4],
+  "放松": [0.6, 0.25], "舒服": [0.6, 0.3], "释然": [0.5, 0.35], "轻松": [0.6, 0.3],
+  "愉快": [0.7, 0.5], "欢喜": [0.7, 0.55], "踏实": [0.5, 0.3], "安心": [0.5, 0.25],
+  "感恩": [0.6, 0.4], "温暖": [0.7, 0.4], "甜蜜": [0.8, 0.5], "欣慰": [0.5, 0.4],
+  "向往": [0.6, 0.55], "自豪": [0.6, 0.5], "骄傲": [0.6, 0.5],
+  // 中唤醒 · 消极
+  "难过": [-0.7, 0.55], "伤心": [-0.75, 0.55], "失落": [-0.6, 0.45], "失望": [-0.65, 0.5],
+  "孤独": [-0.7, 0.4], "孤单": [-0.7, 0.4], "寂寞": [-0.65, 0.35], "想家": [-0.55, 0.45],
+  "迷茫": [-0.5, 0.4], "困惑": [-0.3, 0.4], "纠结": [-0.4, 0.5], "疲惫": [-0.5, 0.4],
+  "累": [-0.5, 0.45], "倦怠": [-0.55, 0.35], "空": [-0.5, 0.3], "空虚": [-0.55, 0.35],
+  "麻木": [-0.4, 0.2], "无聊": [-0.4, 0.35], "烦": [-0.5, 0.6], "沮丧": [-0.65, 0.5],
+  "颓废": [-0.6, 0.35], "无力": [-0.6, 0.4], "心累": [-0.6, 0.45], "惆怅": [-0.45, 0.35],
+  "不甘": [-0.5, 0.55], "抑郁": [-0.75, 0.35], "emo": [-0.6, 0.4],
+  // 低唤醒 · 平静
+  "平静": [0.2, 0.15], "淡定": [0.2, 0.15], "安静": [0.2, 0.15], "平和": [0.3, 0.15],
+  "从容": [0.3, 0.15], "淡然": [0.1, 0.15], "无所谓": [-0.1, 0.2], "沉默": [-0.1, 0.2],
+};
+
+const EM_INTENSIFY = ["极其", "极度", "非常", "特别", "超级", "超", "十分", "万分", "太", "很", "格外", "尤其", "贼", "巨", "好"];
+const EM_SOFTEN = ["有点", "有些", "略微", "稍微", "稍稍", "一点点", "有点儿", "些许", "多少", "略显", "些微", "微微"];
+
+function clampNum(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// 效价 valence(-1~1) × 唤醒 arousal(0~1) → HSL 颜色
+function emotionColor(v, a) {
+  let hue;
+  if (v >= 0) hue = clampNum(130 - a * 170, 10, 130); // 积极：橙(高唤醒) ~ 绿(低唤醒)
+  else        hue = 200 + a * 90;                     // 消极：蓝(低唤醒) ~ 紫(高唤醒)
+  const s = clampNum(50 + a * 45 + Math.abs(v) * 15, 40, 100);
+  const l = clampNum(60 - a * 8 + v * 4, 40, 70);
+  return "hsl(" + hue.toFixed(0) + "," + s.toFixed(0) + "%," + l.toFixed(0) + "%)";
+}
+
+function emotionLabel(v, a, word, matched) {
+  const val = v > 0.2 ? "积极" : (v < -0.2 ? "消极" : "中性");
+  const ar = a > 0.6 ? "强烈" : (a > 0.3 ? "中等" : "平静");
+  return matched ? "识别：" + word + "（" + val + " · " + ar + "）" : "没识别出情绪词，先用中性色";
+}
+
+// 分析单个命中词在上下文里的情绪（否定翻转 + 程度词调节）
+function analyzeWord(word, text) {
+  const idx = text.indexOf(word);
+  const before = text.slice(0, idx);
+  const negated = /(没有|不怎么|不太|不是|不|没|无|算不上)$/.test(before);
+  // 程度词：先在「去掉否定词」的文本里找，避免「不太」里的「太」被误判成加强
+  const cleaned = text.replace(/(没有|不怎么|不太|不是|算不上|不|没|无)/g, "");
+  let intensity = 0;
+  if (EM_INTENSIFY.some(w => cleaned.includes(w))) intensity = +0.3;
+  else if (EM_SOFTEN.some(w => cleaned.includes(w))) intensity = -0.3;
+  const bv = EMOTION_LEXICON[word][0], ba = EMOTION_LEXICON[word][1];
+  const v = negated ? -bv * 0.65 : bv;
+  const a = clampNum(ba + intensity, 0, 1);
+  return { found: true, word: word, negated: negated, v: v, a: a, color: emotionColor(v, a), label: emotionLabel(v, a, word, true) };
+}
+
+// 提取文本里所有命中的情绪词（按出现顺序，去掉被更长词覆盖的重叠）
+function analyzeEmotions(raw) {
+  const text = String(raw || "").trim();
+  const hits = [];
+  for (const word in EMOTION_LEXICON) {
+    let idx = text.indexOf(word);
+    while (idx >= 0) {
+      hits.push({ word, idx });
+      idx = text.indexOf(word, idx + word.length);
+    }
+  }
+  if (!hits.length) return [];
+  hits.sort((a, b) => a.idx - b.idx || b.word.length - a.word.length);
+  const picked = [];
+  for (const h of hits) {
+    if (picked.some(p => h.idx >= p.idx && h.idx < p.idx + p.word.length)) continue;
+    picked.push(h);
+  }
+  picked.sort((a, b) => a.idx - b.idx);
+  return picked.map(h => analyzeWord(h.word, text));
+}
+
+// 分析自由文本情绪 → { found, word, v, a, color, label, word2, v2, color2 }
+// 主情绪 = 第一个出现的情绪词；副情绪 = 之后出现的另一个不同词（用于双色点）
+function analyzeEmotion(raw) {
+  const matches = analyzeEmotions(raw);
+  if (!matches.length) {
+    return { found: false, word: null, v: 0, a: 0.3, color: emotionColor(0, 0.3), label: emotionLabel(0, 0.3, null, false), word2: null, v2: null, color2: null };
+  }
+  const main = matches[0];
+  const second = matches.find(m => m.word !== main.word) || null;
+  return Object.assign({}, main, {
+    word2: second ? second.word : null,
+    v2: second ? second.v : null,
+    color2: second ? second.color : null,
+  });
+}
+
+// 取一个点的颜色（新数据用 color，旧数据用 DIR 兜底）
+function colorOf(p) {
+  return p.color || (DIR[p.dir] && DIR[p.dir].color) || "#9AA7B1";
+}
+
+// 取一个点的情绪文字（新数据用 emotion，旧数据用 from→to 兜底）
+function emotionText(p) {
+  if (p.emotion && p.emotion2) return p.emotion + " · " + p.emotion2;
+  if (p.emotion) return p.emotion;
+  if (p.from || p.to) return (p.from || "") + (p.to ? " → " + p.to : "");
+  return "";
+}
+
+/* ============================================================
+ * 场景类型（43 个地点型，源自 Excel「场景」表）
+ * ============================================================ */
+const SCENE_GROUPS = [
+  { name: "交通 · 节点", items: ["高铁站 / 火车站", "机场", "口岸 / 过关", "港口 / 码头", "地铁 / 地铁站", "公交站", "网约车 / 出租车里", "电动车后座"] },
+  { name: "自然", items: ["公园", "山", "海 / 海边"] },
+  { name: "居住", items: ["城中村", "出租屋", "天台 / 楼顶", "合租房", "老小区", "人才房 / 公租房 / 安居房"] },
+  { name: "工作", items: ["写字楼 / 工位", "会议室", "工厂车间 / 流水线", "工地 / 脚手架", "直播间", "档口 / 柜台"] },
+  { name: "商业 · 街区", items: ["商圈 / 步行街", "创意园 / 文创街区", "古城 / 老街区", "CBD / 写字楼区", "书城 / 图书馆", "菜市场 / 海鲜市场", "便利店", "奶茶店 / 咖啡店", "苍蝇馆子 / 大排档", "夜市 / 早餐摊"] },
+  { name: "公共 · 服务", items: ["医院", "核酸点 / 检测站", "学校", "自习室 / 共享自习室", "人才市场 / 劳务市场", "办事大厅"] },
+  { name: "休闲 · 其他", items: ["天桥", "洗脚店 / 理发店 / 按摩店", "网吧 / 电竞酒店", "体育馆 / 会展"] },
+];
+
+/* ============================================================
+ * 公共演示点：没有 id / owner，只读；用来让第一次打开页面的人
+ * 立刻看见“这座城里已经有人在这里”。
+ * ============================================================ */
+function seedPoint(lng, lat, name, scene, emotion, note, time) {
+  const r = analyzeEmotion(emotion);
+  return {
+    lng, lat, name, scene, emotion, note, time,
+    color: r.color,
+    color2: r.color2,
+  };
+}
+
+const SEED_POINTS = [
+  seedPoint(114.02919, 22.60984, "深圳北站", "高铁站 / 火车站", "有点兴奋又有点害怕", "第一次拖着箱子来到深圳。", "2026-08-01"),
+  seedPoint(113.80998, 22.63988, "宝安国际机场", "机场", "失落", "离开的广播响起时，突然不知道该想谁。", "2026-08-02"),
+  seedPoint(114.05454, 22.52291, "福田 CBD", "CBD / 写字楼区", "焦虑", "楼都亮着，我也还没下班。", "2026-08-03"),
+  seedPoint(113.93041, 22.53332, "腾讯滨海大厦", "写字楼 / 工位", "疲惫", "工卡滴的一声，像今天的句号。", "2026-08-04"),
+  seedPoint(114.06895, 22.54310, "市民中心", "办事大厅", "释然", "终于把那件拖了很久的事办完。", "2026-08-04"),
+  seedPoint(114.11711, 22.54847, "罗湖口岸", "口岸 / 过关", "迷茫", "人流往两边走，我站在中间。", "2026-08-05"),
+  seedPoint(113.93643, 22.52770, "深圳湾公园", "海 / 海边", "平静", "风从海面过来，心也慢了一点。", "2026-08-06"),
+  seedPoint(113.99435, 22.53505, "华侨城创意园", "创意园 / 文创街区", "开心", "在一条小路上误打误撞吃到好吃的。", "2026-08-06"),
+  seedPoint(113.89739, 22.57850, "宝安中心", "商圈 / 步行街", "孤独", "身边都是人，但没有一个人等我。", "2026-08-07"),
+  seedPoint(114.02597, 22.54156, "车公庙", "地铁 / 地铁站", "烦躁", "换乘通道里，每个人都走得很急。", "2026-08-07"),
+  seedPoint(114.08357, 22.54065, "华强北", "档口 / 柜台", "期待", "也许今天就能谈成一单。", "2026-08-08"),
+  seedPoint(114.06063, 22.53618, "莲花山公园", "公园", "放松", "爬上来以后，城市终于没有那么吵。", "2026-08-08"),
+  seedPoint(114.25708, 22.72964, "龙岗中心城", "老小区", "想家", "楼下的晚饭味道，像另一个城市。", "2026-08-09"),
+  seedPoint(114.13159, 22.57330, "布吉", "城中村", "心累", "房间很小，梦倒是装得很满。", "2026-08-09"),
+  seedPoint(114.01052, 22.59687, "民治", "合租房", "安静", "室友都睡了，终于轮到自己呼吸。", "2026-08-10"),
+  seedPoint(113.88402, 22.55432, "西乡", "夜市 / 早餐摊", "满足", "一碗热汤，让今晚变得具体。", "2026-08-10"),
+  seedPoint(113.92908, 22.49527, "蛇口码头", "港口 / 码头", "惆怅", "船开走的时候，灯也一盏盏远了。", "2026-08-11"),
+  seedPoint(114.31371, 22.59508, "盐田港", "港口 / 码头", "压抑", "巨大的货柜旁边，人显得很小。", "2026-08-11"),
+  seedPoint(114.21869, 22.70717, "坪山高铁站", "高铁站 / 火车站", "轻松", "终于坐上回去的车。", "2026-08-12"),
+  seedPoint(114.04682, 22.72048, "观澜", "工厂车间 / 流水线", "麻木", "机器不停，手也不能停。", "2026-08-12"),
+  seedPoint(113.94909, 22.74836, "光明城", "学校", "憧憬", "新的校区很远，但像一个开始。", "2026-08-13"),
+  seedPoint(114.50813, 22.59637, "大鹏所城", "古城 / 老街区", "温暖", "旧墙边的灯，把晚上照得很软。", "2026-08-13"),
+  seedPoint(114.31234, 22.60382, "盐田海滨栈道", "海 / 海边", "释然又难过", "有些事想通了，但还是会疼。", "2026-08-14"),
+  seedPoint(113.97302, 22.58783, "西丽", "自习室 / 共享自习室", "不甘", "再刷一套题，也许就能过去。", "2026-08-14"),
+  seedPoint(114.05536, 22.52479, "会展中心", "体育馆 / 会展", "激动", "人群同时亮起手机，像一片潮水。", "2026-08-15"),
+  seedPoint(114.12379, 22.54372, "东门老街", "商圈 / 步行街", "快乐", "买到便宜东西的快乐很朴素。", "2026-08-15"),
+];
+
+/* ============================================================
+ * 本地数据（localStorage）
+ * ============================================================ */
+const LS_KEY = "sz_emotion_map_points_v1";
+const LS_DEMO_HIDDEN_KEY = "sz_emotion_map_demo_hidden_v1";
+function loadSaved() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { return []; }
+}
+function saveAll() {
+  localStorage.setItem(LS_KEY, JSON.stringify(savedPoints));
+}
+function loadDemoHidden() {
+  try { return localStorage.getItem(LS_DEMO_HIDDEN_KEY) === "1"; } catch (e) { return false; }
+}
+function saveDemoHidden(v) {
+  try { localStorage.setItem(LS_DEMO_HIDDEN_KEY, v ? "1" : "0"); } catch (e) {}
+}
+
+let savedPoints = loadSaved();
+let demoHidden = loadDemoHidden();
+
+/* ============================================================
+ * 渲染静态 UI：图例（情绪色谱）/ 场景下拉
+ * ============================================================ */
+const EM_LEGEND = [
+  { color: "#7cc48c", label: "平静 · 满足" },
+  { color: "#ffb84d", label: "开心 · 愉悦" },
+  { color: "#ff6a3d", label: "兴奋 · 激动" },
+  { color: "#5a8bff", label: "难过 · 失落" },
+  { color: "#b48cff", label: "焦虑 · 愤怒" },
+];
+const legendEl = document.getElementById("legend");
+legendEl.innerHTML =
+  '<span style="opacity:.7">情绪</span>' +
+  EM_LEGEND.map(d =>
+    `<div class="row"><span class="sw" style="--c:${d.color}"></span>${d.label}</div>`
+  ).join("");
+
+const sceneSelect = document.getElementById("sceneSelect");
+for (const g of SCENE_GROUPS) {
+  const og = document.createElement("optgroup");
+  og.label = g.name;
+  for (const t of g.items) {
+    const o = document.createElement("option");
+    o.value = t; o.textContent = t;
+    og.appendChild(o);
+  }
+  sceneSelect.appendChild(og);
+}
+
+/* ============================================================
+ * 地图初始化
+ * ============================================================ */
+const notice = document.getElementById("keyNotice");
+if (!AMAP_KEY) {
+  notice.style.display = "flex";
+} else {
+  if (AMAP_SECURITY) window._AMapSecurityConfig = { securityJsCode: AMAP_SECURITY };
+  const s = document.createElement("script");
+  s.src = "https://webapi.amap.com/maps?v=2.0&key=" + AMAP_KEY;
+  s.onload = init;
+  document.head.appendChild(s);
+}
+
+let map;
+let savedMarkers = [];
+let seedMarkers = [];
+let draftMarker = null, draftPos = null;
+let editingId = null;
+let picking = false;
+let geocoder = null;
+
+function dotHtml(color, color2) {
+  const dual = !!color2 && color2 !== color;
+  let style = "--c:" + color;
+  if (dual) style += ";--c2:" + color2;
+  return `<div class="dot${dual ? " dual" : ""}" style="${style}"><span class="core"></span></div>`;
+}
+
+function renderPoint(p) {
+  const mine = isMine(p);
+  const marker = new AMap.Marker({
+    position: [p.lng, p.lat],
+    content: dotHtml(colorOf(p), p.color2),
+    offset: new AMap.Pixel(-8, -8),
+    zIndex: 100,
+    draggable: mine,
+  });
+  if (mine) {
+    marker.on("dragend", (e) => {
+      const pos = e.target.getPosition();
+      p.lng = pos.getLng();
+      p.lat = pos.getLat();
+      claimPoint(p);
+      saveAll();
+    });
+  }
+  marker.on("click", () => {
+    if (mine) openEditPanel(p);
+  });
+  marker.on("mouseover", () => {
+    const px = map.lngLatToContainer([p.lng, p.lat]);
+    showTip(p, px.x, px.y);
+  });
+  marker.on("mouseout", hideTip);
+  marker.setMap(map);
+  return marker;
+}
+
+const tip = document.getElementById("tip");
+function showTip(p, x, y) {
+  const c = colorOf(p);
+  const dual = !!p.color2 && p.color2 !== c;
+  let style = "--c:" + c;
+  if (dual) style += ";--c2:" + p.color2;
+  tip.innerHTML =
+    `<div class="t-scene">${escapeHtml(p.scene)}</div>` +
+    `<div class="t-fromto"><span class="t-dot${dual ? " dual" : ""}" style="${style}"></span>${escapeHtml(emotionText(p))}</div>`;
+  tip.style.left = x + "px";
+  tip.style.top = (y - 16) + "px";
+  tip.classList.add("show");
+}
+function hideTip() {
+  tip.classList.remove("show");
+}
+
+function updateCounter() {
+  document.getElementById("count").textContent = savedPoints.length + (demoHidden ? 0 : SEED_POINTS.length);
+}
+
+function updateDemoToggle() {
+  const btn = document.getElementById("demoToggle");
+  btn.textContent = demoHidden ? "显示演示" : "隐藏演示";
+}
+
+function renderSeedMarkers() {
+  seedMarkers.forEach(m => m.setMap(null));
+  seedMarkers = demoHidden ? [] : SEED_POINTS.map(p => renderPoint(p));
+}
+
+function renderSavedMarkers() {
+  savedMarkers.forEach(m => m.setMap(null));
+  savedMarkers = savedPoints.map(p => renderPoint(p));
+}
+
+function visibleMarkers() {
+  return seedMarkers.concat(savedMarkers).filter(Boolean);
+}
+
+function setDemoHidden(hidden) {
+  demoHidden = hidden;
+  saveDemoHidden(demoHidden);
+  updateDemoToggle();
+  if (map) {
+    renderSeedMarkers();
+    const markers = visibleMarkers();
+    if (markers.length) map.setFitView(markers, false, [70, 70, 70, 70]);
+  }
+  updateCounter();
+}
+
+function init() {
+  map = new AMap.Map("map", {
+    center: [114.04, 22.56],
+    zoom: 11,
+    mapStyle: "amap://styles/dark",
+    showLabel: false,
+    zoomEnable: true,
+    dragEnable: true,
+  });
+
+  renderSeedMarkers();
+  renderSavedMarkers();
+  const markers = visibleMarkers();
+  if (markers.length) map.setFitView(markers, false, [70, 70, 70, 70]);
+  map.on("click", function (e) {
+    if (picking) {
+      setPicking(false);
+      handlePick(e.lnglat.getLng(), e.lnglat.getLat());
+    }
+  });
+  updateCounter();
+  updateDemoToggle();
+
+  setupSearch();
+
+  pickBtn.addEventListener("click", function () {
+    setPicking(!picking);
+  });
+}
+
+/* ============================================================
+ * 地点搜索（高德 PlaceSearch + 自定义结果列表）
+ * 用 PlaceSearch 而不是 Autocomplete：Autocomplete 在 key / 安全密钥
+ * 配置出错时会「静默失败」，用户什么都看不到。PlaceSearch 的回调能拿到
+ * status 和 result.info，出错时把真实原因显示出来。
+ * ============================================================ */
+let placeSearch = null;
+
+function setupSearch() {
+  const input = document.getElementById("searchInput");
+  const btn = document.getElementById("searchBtn");
+  const results = document.getElementById("results");
+
+  if (!AMAP_SECURITY) {
+    document.getElementById("secWarn").style.display = "block";
+    btn.disabled = true;
+    return;
+  }
+
+  AMap.plugin("AMap.PlaceSearch", function () {
+    placeSearch = new AMap.PlaceSearch({
+      city: "深圳",
+      citylimit: true,
+      pageSize: 10,
+      pageIndex: 1,
+    });
+    btn.disabled = false;
+  });
+
+  function doSearch() {
+    const kw = input.value.trim();
+    if (!kw) { hideResults(); return; }
+    if (!placeSearch) { showResultsError("搜索服务还在加载，稍等一秒再试。"); return; }
+
+    btn.disabled = true;
+    btn.textContent = "…";
+    placeSearch.search(kw, function (status, result) {
+      btn.disabled = false;
+      btn.textContent = "搜索";
+      if (status === "complete") {
+        const pois = result.poiList && result.poiList.pois || [];
+        if (pois.length) renderResults(pois);
+        else showResultsError("没有找到「" + kw + "」，换个关键词试试。");
+      } else if (status === "no_data") {
+        showResultsError("没有找到「" + kw + "」，换个关键词试试。");
+      } else {
+        showResultsError("搜索失败：" + friendlySearchError(result && result.info));
+      }
+    });
+  }
+
+  btn.addEventListener("click", doSearch);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); doSearch(); }
+  });
+
+  results.addEventListener("click", function (e) {
+    const item = e.target.closest(".res-item");
+    if (!item) return;
+    const lng = parseFloat(item.dataset.lng);
+    const lat = parseFloat(item.dataset.lat);
+    if (isNaN(lng) || isNaN(lat)) return;
+    hideResults();
+    input.value = item.dataset.name || "";
+    placeDraft(lng, lat, item.dataset.name || "");
+  });
+
+  document.getElementById("map").addEventListener("click", hideResults);
+}
+
+function renderResults(pois) {
+  const results = document.getElementById("results");
+  results.innerHTML = pois.map(function (poi) {
+    const pos = locOf(poi);
+    const lng = pos ? pos.lng : "";
+    const lat = pos ? pos.lat : "";
+    const addr = [poi.pname, poi.cityname, poi.adname, poi.address]
+      .filter(function (x) { return x && x !== poi.name; }).join(" · ");
+    return `<div class="res-item" data-lng="${lng}" data-lat="${lat}" data-name="${escapeHtml(poi.name || "")}">
+      <div class="res-name">${escapeHtml(poi.name || "")}</div>
+      <div class="res-addr">${escapeHtml(addr)}</div>
+    </div>`;
+  }).join("");
+  results.classList.add("show");
+}
+
+function showResultsError(msg) {
+  const results = document.getElementById("results");
+  results.innerHTML = `<div class="res-err">${escapeHtml(msg)}</div>`;
+  results.classList.add("show");
+}
+
+function hideResults() {
+  const results = document.getElementById("results");
+  results.classList.remove("show");
+  results.innerHTML = "";
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function friendlySearchError(code) {
+  const map = {
+    "INVALID_USER_SCODE": "安全密钥（AMAP_SECURITY）不对，或与你填的 key 不属于同一个应用。",
+    "USERKEY_PLAT_NOMATCH": "key 和安全密钥不是同一应用下的，去高德控制台核对一下。",
+    "INVALID_USER_KEY": "AMAP_KEY 无效或类型不对（要用「Web端 JS API」）。",
+    "DAILY_QUERY_OVER_LIMIT": "今日搜索配额用完了，明天再来。",
+    "USER_DAILY_QUERY_OVER_LIMIT": "今日搜索配额用完了，明天再来。",
+    "ACCESS_TOO_FREQUENT": "搜索太频繁，歇一下。",
+  };
+  return map[code] || ("(" + code + ") 检查 key 与安全密钥是否都正确填写、且属于同一应用。");
+}
+
+function locOf(poi) {
+  if (!poi || !poi.location) return null;
+  const L = poi.location;
+  const lng = typeof L.getLng === "function" ? L.getLng() : L.lng;
+  const lat = typeof L.getLat === "function" ? L.getLat() : L.lat;
+  if (lng == null || lat == null) return null;
+  return { lng, lat };
+}
+
+function placeDraftMarker(lng, lat) {
+  if (draftMarker) draftMarker.setMap(null);
+  draftPos = { lng, lat };
+
+  draftMarker = new AMap.Marker({
+    position: [lng, lat],
+    content: `<div class="draft"><span class="core"></span></div>`,
+    offset: new AMap.Pixel(-10, -10),
+    draggable: true,
+    zIndex: 200,
+  });
+  draftMarker.on("dragend", function (e) {
+    const p = e.target.getPosition();
+    draftPos = { lng: p.lng, lat: p.lat };
+  });
+  draftMarker.setMap(map);
+}
+
+function placeDraft(lng, lat, name) {
+  placeDraftMarker(lng, lat);
+  map.setCenter([lng, lat]);
+  map.setZoom(16);
+  openPanel(name);
+}
+
+/* ============================================================
+ * 定点（不搜索，直接在地图上点一个位置）
+ * 落点后用高德逆地理编码自动匹配一个地点名，再打开输入面板。
+ * ============================================================ */
+function setPicking(on) {
+  picking = on;
+  pickBtn.classList.toggle("on", on);
+  pickHint.classList.toggle("show", on);
+  document.getElementById("map").style.cursor = on ? "crosshair" : "";
+}
+
+function handlePick(lng, lat) {
+  placeDraftMarker(lng, lat);
+  map.setCenter([lng, lat]);
+  map.setZoom(16);
+  openPanel("");
+  reverseGeocode(lng, lat, function (name) {
+    if (name && panel.classList.contains("show") && !editingId && !nameInput.value.trim()) {
+      nameInput.value = name;
+    }
+  });
+}
+
+function reverseGeocode(lng, lat, cb) {
+  if (!AMAP_SECURITY) { cb(null); return; }
+  AMap.plugin("AMap.Geocoder", function () {
+    if (!geocoder) geocoder = new AMap.Geocoder({ city: "深圳" });
+    geocoder.getAddress([lng, lat], function (status, result) {
+      if (status === "complete" && result.regeocode) {
+        cb(placeNameFrom(result.regeocode));
+      } else {
+        cb(null);
+      }
+    });
+  });
+}
+
+function placeNameFrom(re) {
+  const ac = re.addressComponent || {};
+  if (ac.building && ac.building.name) return ac.building.name;
+  if (ac.neighborhood && ac.neighborhood.name) return ac.neighborhood.name;
+  if (re.pois && re.pois.length && re.pois[0].name) return re.pois[0].name;
+  if (ac.streetNumber && ac.streetNumber.street) {
+    const sn = ac.streetNumber;
+    return sn.number ? sn.street + sn.number + "号" : sn.street;
+  }
+  return re.formattedAddress || "";
+}
+
+/* ============================================================
+ * 输入面板
+ * ============================================================ */
+const panel = document.getElementById("inputPanel");
+const nameInput = document.getElementById("nameInput");
+const emotionInput = document.getElementById("emotionInput");
+const emotionInput2 = document.getElementById("emotionInput2");
+const emSwatch = document.getElementById("emSwatch");
+const emLabel = document.getElementById("emLabel");
+const noteInput = document.getElementById("noteInput");
+const ipError = document.getElementById("ipError");
+const ipTitle = document.getElementById("ipTitle");
+const timeInput = document.getElementById("timeInput");
+const dateField = document.getElementById("dateField");
+const dateFieldText = document.getElementById("dateFieldText");
+const datePicker = document.getElementById("datePicker");
+const dpTitle = document.getElementById("dpTitle");
+const dpGrid = document.getElementById("dpGrid");
+const dpPrev = document.getElementById("dpPrev");
+const dpNext = document.getElementById("dpNext");
+const dpToday = document.getElementById("dpToday");
+const dpClear = document.getElementById("dpClear");
+const ipDelete = document.getElementById("ipDelete");
+const ipSubmit = document.getElementById("ipSubmit");
+const pickBtn = document.getElementById("pickBtn");
+const pickHint = document.getElementById("pickHint");
+
+let currentEmotion = null;
+
+function updateEmotionPreview() {
+  const main = analyzeEmotion(emotionInput.value);
+  const subText = emotionInput2.value.trim();
+  const sub = subText ? analyzeEmotion(subText) : null;
+  currentEmotion = Object.assign({}, main, {
+    color2: sub ? sub.color : main.color2,
+    word2: sub ? (sub.word || subText) : main.word2,
+    subLabel: sub ? sub.label : "",
+  });
+  emSwatch.style.setProperty("--c", currentEmotion.color);
+  if (currentEmotion.color2 && currentEmotion.color2 !== currentEmotion.color) {
+    emSwatch.style.setProperty("--c2", currentEmotion.color2);
+    emSwatch.classList.add("dual");
+  } else {
+    emSwatch.style.removeProperty("--c2");
+    emSwatch.classList.remove("dual");
+  }
+  emLabel.textContent = subText
+    ? "主：" + currentEmotion.label + "  ·  副：" + (currentEmotion.subLabel || ("识别：" + subText))
+    : (currentEmotion.word2 ? currentEmotion.label + "  ·  还有「" + currentEmotion.word2 + "」" : currentEmotion.label);
+}
+
+/* ============================================================
+ * 自定义日历（替代原生 date 弹出，智能向上展开、更大触控）
+ * ============================================================ */
+let viewYear = new Date().getFullYear();
+let viewMonth = new Date().getMonth(); // 0-based
+let viewMode = "days"; // "days"（日）→ "months"（月）→ "years"（十年），点标题逐级上钻/循环
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+function fmtDate(y, m, d) { return y + "-" + pad2(m) + "-" + pad2(d); } // m 1-based
+
+function updateDateField() {
+  const v = timeInput.value;
+  if (v) {
+    const [y, m, d] = v.split("-").map(Number);
+    dateFieldText.textContent = y + " 年 " + m + " 月 " + d + " 日";
+  } else {
+    dateFieldText.textContent = "不指定";
+  }
+}
+
+function syncViewToSelection() {
+  const v = timeInput.value;
+  if (v) { viewYear = +v.slice(0, 4); viewMonth = +v.slice(5, 7) - 1; }
+  else { const t = new Date(); viewYear = t.getFullYear(); viewMonth = t.getMonth(); }
+}
+
+function renderPicker() {
+  const t = new Date();
+  const nowY = t.getFullYear();
+  const nowM = t.getMonth();
+  const todayStr = fmtDate(nowY, nowM + 1, t.getDate());
+  const selY = timeInput.value ? +timeInput.value.slice(0, 4) : null;
+  const selM = timeInput.value ? +timeInput.value.slice(5, 7) - 1 : null;
+
+  if (viewMode === "days") {
+    const week = ["一", "二", "三", "四", "五", "六", "日"];
+    const first = new Date(viewYear, viewMonth, 1);
+    const startOffset = (first.getDay() + 6) % 7; // 周一起始
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    dpTitle.textContent = viewYear + " 年 " + (viewMonth + 1) + " 月";
+    dpGrid.style.gridTemplateColumns = "repeat(7, 1fr)";
+    let html = week.map(w => `<div class="dp-dow">${w}</div>`).join("");
+    for (let i = 0; i < startOffset; i++) html += `<div class="dp-empty"></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const str = fmtDate(viewYear, viewMonth + 1, d);
+      let cls = "dp-day";
+      if (str === timeInput.value) cls += " selected";
+      if (str === todayStr) cls += " today";
+      html += `<button type="button" class="${cls}" data-str="${str}">${d}</button>`;
+    }
+    dpGrid.innerHTML = html;
+  } else if (viewMode === "months") {
+    dpTitle.textContent = viewYear + " 年";
+    dpGrid.style.gridTemplateColumns = "repeat(3, 1fr)";
+    let html = "";
+    for (let m = 0; m < 12; m++) {
+      let cls = "dp-cell dp-month";
+      if (selY === viewYear && selM === m) cls += " selected";
+      if (nowY === viewYear && nowM === m) cls += " today";
+      html += `<button type="button" class="${cls}" data-m="${m}">${m + 1} 月</button>`;
+    }
+    dpGrid.innerHTML = html;
+  } else { // years：十年一屏
+    const start = Math.floor(viewYear / 10) * 10;
+    dpTitle.textContent = start + " – " + (start + 9);
+    dpGrid.style.gridTemplateColumns = "repeat(5, 1fr)";
+    let html = "";
+    for (let y = start; y < start + 10; y++) {
+      let cls = "dp-cell dp-year";
+      if (selY === y) cls += " selected";
+      if (nowY === y) cls += " today";
+      html += `<button type="button" class="${cls}" data-y="${y}">${y}</button>`;
+    }
+    dpGrid.innerHTML = html;
+  }
+}
+
+function openDatePicker() {
+  syncViewToSelection();
+  viewMode = "days";
+  renderPicker();
+  const rect = dateField.getBoundingClientRect();
+  const width = Math.min(Math.max(rect.width, 300), 340);
+  datePicker.style.width = width + "px";
+  datePicker.style.left = Math.min(rect.left, window.innerWidth - width - 12) + "px";
+  datePicker.classList.add("show");
+  const h = datePicker.offsetHeight;
+  if (window.innerHeight - rect.bottom >= h + 12) {
+    datePicker.style.top = (rect.bottom + 8) + "px";       // 下方放得下 → 向下
+  } else if (rect.top >= h + 12) {
+    datePicker.style.top = (rect.top - h - 8) + "px";      // 否则向上
+  } else {
+    datePicker.style.top = "12px";                          // 都不够 → 贴顶
+  }
+}
+
+function closeDatePicker() {
+  datePicker.classList.remove("show");
+}
+
+dateField.addEventListener("click", () => {
+  if (datePicker.classList.contains("show")) closeDatePicker();
+  else openDatePicker();
+});
+dpTitle.addEventListener("click", () => {
+  // 日 → 月 → 十年 → 日，逐级上钻/循环
+  viewMode = viewMode === "days" ? "months" : viewMode === "months" ? "years" : "days";
+  renderPicker();
+});
+dpPrev.addEventListener("click", () => {
+  if (viewMode === "days") { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } }
+  else if (viewMode === "months") { viewYear--; }
+  else { viewYear -= 10; }
+  renderPicker();
+});
+dpNext.addEventListener("click", () => {
+  if (viewMode === "days") { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } }
+  else if (viewMode === "months") { viewYear++; }
+  else { viewYear += 10; }
+  renderPicker();
+});
+dpGrid.addEventListener("click", (e) => {
+  e.stopPropagation(); // 阻止冒泡到 document：年月点击会重渲染网格、把 target 从 DOM 移除，否则会被外部点击监听误判为“点了外面”而关闭
+  const dayBtn = e.target.closest(".dp-day");
+  if (dayBtn) {
+    timeInput.value = dayBtn.dataset.str;
+    updateDateField();
+    closeDatePicker();
+    return;
+  }
+  const monthBtn = e.target.closest(".dp-month");
+  if (monthBtn) {
+    viewMonth = +monthBtn.dataset.m;
+    viewMode = "days";
+    renderPicker();
+    return;
+  }
+  const yearBtn = e.target.closest(".dp-year");
+  if (yearBtn) {
+    viewYear = +yearBtn.dataset.y;
+    viewMode = "months";
+    renderPicker();
+  }
+});
+dpToday.addEventListener("click", () => {
+  const t = new Date();
+  timeInput.value = fmtDate(t.getFullYear(), t.getMonth() + 1, t.getDate());
+  updateDateField();
+  closeDatePicker();
+});
+dpClear.addEventListener("click", () => {
+  timeInput.value = "";
+  updateDateField();
+  closeDatePicker();
+});
+document.addEventListener("click", (e) => {
+  if (datePicker.classList.contains("show") &&
+      !datePicker.contains(e.target) && !dateField.contains(e.target)) {
+    closeDatePicker();
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeDatePicker();
+});
+
+function openPanel(name) {
+  setPicking(false);
+  editingId = null;
+  ipTitle.textContent = "记一笔";
+  ipDelete.style.display = "none";
+  ipSubmit.textContent = "提交";
+  nameInput.value = name || "";
+  emotionInput.value = ""; emotionInput2.value = ""; noteInput.value = "";
+  timeInput.value = "";
+  updateDateField();
+  sceneSelect.value = "";
+  currentEmotion = null;
+  updateEmotionPreview();
+  ipError.style.display = "none";
+  panel.classList.add("show");
+}
+
+function openEditPanel(p) {
+  if (!isMine(p)) return;
+  setPicking(false);
+  editingId = p.id;
+  ipTitle.textContent = "编辑这笔";
+  ipDelete.style.display = "";
+  ipSubmit.textContent = "保存";
+  nameInput.value = p.name || "";
+  emotionInput.value = p.emotion || ((p.from || p.to) ? (p.from || "") + " → " + (p.to || "") : "");
+  emotionInput2.value = p.emotion2 || "";
+  noteInput.value = p.note || "";
+  timeInput.value = p.time || "";
+  updateDateField();
+  sceneSelect.value = (p.scene && p.scene !== "不指定") ? p.scene : "";
+  updateEmotionPreview();
+  ipError.style.display = "none";
+  placeDraftMarker(p.lng, p.lat);
+  map.setCenter([p.lng, p.lat]);
+  map.setZoom(16);
+  panel.classList.add("show");
+}
+
+function closePanel() {
+  panel.classList.remove("show");
+  if (draftMarker) { draftMarker.setMap(null); draftMarker = null; }
+  draftPos = null;
+}
+
+emotionInput.addEventListener("input", updateEmotionPreview);
+emotionInput2.addEventListener("input", updateEmotionPreview);
+
+document.getElementById("ipClose").addEventListener("click", closePanel);
+document.getElementById("ipCancel").addEventListener("click", closePanel);
+
+ipSubmit.addEventListener("click", function () {
+  const emotion = emotionInput.value.trim();
+  const emotion2 = emotionInput2.value.trim();
+  if (!draftPos) { showErr("请先在搜索框选一个地点"); return; }
+  if (!emotion) { showErr("请写下此刻的情绪"); return; }
+  const original = editingId ? savedPoints.find(p => p.id === editingId) : null;
+  if (!currentUser() && !original) { openLogin(); authErr("先登录，你的情绪才能存进自己的日记——公共地图上依旧匿名。", true); return; }
+
+  const data = {
+    lng: draftPos.lng,
+    lat: draftPos.lat,
+    name: nameInput.value.trim(),
+    scene: sceneSelect.value || "不指定",
+    emotion: emotion,
+    emotion2: emotion2,
+    color: (currentEmotion && currentEmotion.color) || "#8a93a3",
+    color2: emotion2 ? ((currentEmotion && currentEmotion.color2) || null) : null,
+    note: noteInput.value.trim(),
+    time: timeInput.value,
+    owner: currentUser() || (original && original.owner) || null,
+  };
+
+  if (editingId) {
+    const i = savedPoints.findIndex(p => p.id === editingId);
+    if (i >= 0) {
+      const updated = Object.assign({}, savedPoints[i], data);
+      savedPoints[i] = updated;
+      savedMarkers[i].setMap(null);
+      savedMarkers[i] = renderPoint(updated);
+    }
+  } else {
+    const p = Object.assign({ id: "s" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) }, data);
+    savedPoints.push(p);
+    savedMarkers.push(renderPoint(p));
+  }
+  saveAll();
+  updateCounter();
+  closePanel();
+});
+
+ipDelete.addEventListener("click", function () {
+  if (!editingId) return;
+  deletePoint(editingId);
+  closePanel();
+});
+
+function showErr(msg) {
+  ipError.textContent = msg;
+  ipError.style.display = "block";
+}
+
+/* ============================================================
+ * 账号（本地模拟）+ 个人主页
+ * ============================================================ */
+const authorBtn = document.getElementById("authorBtn");
+const loginModal = document.getElementById("loginModal");
+const authUser = document.getElementById("authUser");
+const authPw = document.getElementById("authPw");
+const authEmoji = document.getElementById("authEmoji");
+const authToggle = document.getElementById("authToggle");
+const authTitle = document.getElementById("authTitle");
+const loginErr = document.getElementById("loginErr");
+const loginSubmit = document.getElementById("loginSubmit");
+const loginCancel = document.getElementById("loginCancel");
+const homeView = document.getElementById("homeView");
+const homeClose = document.getElementById("homeClose");
+const homeLogout = document.getElementById("homeLogout");
+const homeExport = document.getElementById("homeExport");
+const homeImport = document.getElementById("homeImport");
+const importFile = document.getElementById("importFile");
+
+let authMode = "login"; // "login" | "register"
+let selectedEmoji = EMOJIS[0];
+
+function getUsers() {
+  try { return JSON.parse(localStorage.getItem(LS_USERS_KEY)) || {}; } catch (e) { return {}; }
+}
+function saveUsers(u) {
+  try { localStorage.setItem(LS_USERS_KEY, JSON.stringify(u)); } catch (e) {}
+}
+function currentUser() {
+  try { return localStorage.getItem(LS_SESSION_KEY); } catch (e) { return null; }
+}
+function setSession(name) {
+  try { name ? localStorage.setItem(LS_SESSION_KEY, name) : localStorage.removeItem(LS_SESSION_KEY); } catch (e) {}
+}
+function currentProfile() {
+  const u = currentUser();
+  if (u === AUTHOR_USER) return { name: AUTHOR_USER, pass: AUTHOR_PASS, emoji: AUTHOR_EMOJI, author: true };
+  return u ? (getUsers()[u] || null) : null;
+}
+function isAuthed() { return !!currentProfile(); }
+function isMine(p) {
+  if (!p || !p.id) return false;
+  return !p.owner || p.owner === currentUser();
+}
+
+function claimPoint(p) {
+  if (p && p.id && !p.owner && currentUser()) p.owner = currentUser();
+}
+
+function updateAuthorBtn() {
+  authorBtn.textContent = isAuthed() ? "我的主页" : "作者入口";
+  authorBtn.classList.toggle("on", isAuthed());
+}
+
+function renderAuthEmoji() {
+  authEmoji.innerHTML = EMOJIS.map(e =>
+    `<button type="button" class="emo${e === selectedEmoji ? " on" : ""}" data-e="${e}">${e}</button>`).join("");
+}
+function setAuthMode(mode) {
+  authMode = mode;
+  const reg = mode === "register";
+  authTitle.textContent = reg ? "注册" : "作者入口";
+  authToggle.textContent = reg ? "已有账号，去登录" : "还没有账号，去注册";
+  authEmoji.style.display = reg ? "" : "none";
+  authUser.value = "";
+  authPw.value = "";
+  authErr("", false);
+}
+
+function authErr(msg, info) {
+  loginErr.textContent = msg;
+  loginErr.classList.toggle("info", !!info);
+  loginErr.style.display = msg ? "block" : "none";
+}
+
+function openLogin(mode) {
+  setAuthMode(mode || "login");
+  renderAuthEmoji();
+  loginModal.classList.add("show");
+  setTimeout(() => authPw.focus(), 50);
+}
+function closeLogin() { loginModal.classList.remove("show"); }
+
+function tryLogin() {
+  const name = authUser.value.trim();
+  const pw = authPw.value;
+  if (!pw) { authErr("请填写口令。", false); return; }
+  const users = getUsers();
+  if (authMode === "register") {
+    if (!name) { authErr("请填写用户名。", false); return; }
+    if (users[name]) { authErr("这个用户名已被注册，试试直接登录。", false); return; }
+    users[name] = { name: name, pass: pw, emoji: selectedEmoji };
+    saveUsers(users);
+    setSession(name);
+    updateAuthorBtn();
+    if (map) renderSavedMarkers();
+    closeLogin();
+    openHome();
+  } else {
+    if ((!name || name === AUTHOR_USER) && pw === AUTHOR_PASS) {
+      setSession(AUTHOR_USER);
+      updateAuthorBtn();
+      if (map) renderSavedMarkers();
+      closeLogin();
+      openHome();
+      return;
+    }
+    if (!name) { authErr("普通账号请填写用户名；作者入口只需要填作者口令。", false); return; }
+    const u = users[name];
+    if (!u) { authErr("还没有这个账号，先去注册一个。", false); return; }
+    if (u.pass !== pw) { authErr("口令不对，再试一次。", false); return; }
+    setSession(name);
+    updateAuthorBtn();
+    if (map) renderSavedMarkers();
+    closeLogin();
+    openHome();
+  }
+}
+
+function deletePoint(id) {
+  const i = savedPoints.findIndex(p => p.id === id);
+  if (i < 0) return;
+  if (savedMarkers[i]) savedMarkers[i].setMap(null);
+  savedPoints.splice(i, 1);
+  savedMarkers.splice(i, 1);
+  saveAll();
+  updateCounter();
+}
+
+function normalizeImportedPoints(raw) {
+  const arr = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.points) ? raw.points : []);
+  return arr.filter(p =>
+    p && p.id && typeof p.lng === "number" && typeof p.lat === "number"
+  ).map(p => Object.assign({}, p));
+}
+
+function mergeImportedPoints(points) {
+  let added = 0, updated = 0;
+  const byId = {};
+  savedPoints.forEach((p, i) => { if (p.id) byId[p.id] = i; });
+  points.forEach(p => {
+    if (byId[p.id] == null) {
+      savedPoints.push(p);
+      byId[p.id] = savedPoints.length - 1;
+      added++;
+    } else {
+      savedPoints[byId[p.id]] = Object.assign({}, savedPoints[byId[p.id]], p);
+      updated++;
+    }
+  });
+  saveAll();
+  if (map) renderSavedMarkers();
+  updateCounter();
+  if (homeView.classList.contains("show")) renderHome();
+  return { added, updated };
+}
+
+function exportPoints() {
+  const payload = {
+    app: "sz-emotion-map",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    points: savedPoints,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  const date = new Date().toISOString().slice(0, 10);
+  a.href = URL.createObjectURL(blob);
+  a.download = "深圳情绪地图备份-" + date + ".json";
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(a.href);
+  a.remove();
+}
+
+function importPointsFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function () {
+    try {
+      const data = JSON.parse(String(reader.result || ""));
+      const points = normalizeImportedPoints(data);
+      if (!points.length) {
+        alert("没有读到可导入的情绪点。");
+        return;
+      }
+      const result = mergeImportedPoints(points);
+      alert("导入完成：新增 " + result.added + " 笔，更新 " + result.updated + " 笔。");
+    } catch (e) {
+      alert("导入失败：这个 JSON 文件格式不对。");
+    } finally {
+      importFile.value = "";
+    }
+  };
+  reader.readAsText(file);
+}
+
+function statCell(label, val) {
+  return `<div class="stat"><b>${escapeHtml(String(val))}</b><span>${escapeHtml(label)}</span></div>`;
+}
+
+// 把平均效价 v（-1~1）翻译成一句口语化的心情
+function valencePhrase(v) {
+  if (v >= 0.6) return "觉得心情很舒畅";
+  if (v >= 0.3) return "觉得心情挺舒畅";
+  if (v >= 0.1) return "觉得还挺轻松";
+  if (v > -0.3) return "心情比较平静";
+  if (v > -0.6) return "觉得不太开心";
+  return "觉得很不开心";
+}
+
+function parseDateStr(s) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s || ""))) return null;
+  const d = new Date(s + "T00:00:00");
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function seasonOfDate(s) {
+  const d = parseDateStr(s);
+  if (!d) return "";
+  const m = d.getMonth() + 1;
+  if (m >= 3 && m <= 5) return "春季";
+  if (m >= 6 && m <= 8) return "夏季";
+  if (m >= 9 && m <= 11) return "秋季";
+  return "冬季";
+}
+
+function dayTypeOfDate(s) {
+  const d = parseDateStr(s);
+  if (!d) return "";
+  const day = d.getDay();
+  return (day === 0 || day === 6) ? "周末" : "工作日";
+}
+
+function monthOfDate(s) {
+  const d = parseDateStr(s);
+  return d ? (d.getMonth() + 1) + "月" : "";
+}
+
+function topKeyLabel(groups) {
+  let best = null;
+  Object.keys(groups).forEach(k => {
+    if (!best || groups[k].length > groups[best].length) best = k;
+  });
+  return best ? best + "（" + groups[best].length + "）" : "—";
+}
+
+function groupedMoodInsights(pts, keyFn, prefix) {
+  const groups = {};
+  pts.forEach(p => {
+    const key = keyFn(p);
+    if (!key) return;
+    (groups[key] = groups[key] || []).push(p);
+  });
+  return Object.keys(groups).map(key => {
+    const arr = groups[key];
+    let sv = 0, sa = 0, matched = 0;
+    arr.forEach(p => {
+      const r = analyzeEmotion(emotionText(p));
+      if (r.found) { sv += r.v; sa += r.a; matched++; }
+    });
+    return { key, n: arr.length, matched, v: sv / matched, a: sa / matched, prefix };
+  }).filter(g => g.n >= 2 && g.matched > 0)
+    .sort((a, b) => b.n - a.n || b.v - a.v);
+}
+
+function renderHome() {
+  const prof = currentProfile();
+  document.getElementById("homeAvatar").textContent = prof ? prof.emoji : "🌗";
+  document.getElementById("homeName").textContent = prof ? prof.name : "我";
+  document.getElementById("homeTag").textContent = "我的情绪日记 · 公共地图上匿名";
+
+  // 只看「我」的每一笔（最新的在前，无日期的排最后）
+  const pts = savedPoints.filter(isMine).slice().sort((a, b) => {
+    const ta = a.time || "", tb = b.time || "";
+    if (ta !== tb) return tb.localeCompare(ta);
+    return 0;
+  });
+  const n = pts.length;
+
+  // 统计
+  const scenes = new Set(pts.map(p => p.scene).filter(s => s && s !== "不指定"));
+  const seasonGroups = {};
+  const monthGroups = {};
+  const dayTypeGroups = {};
+  pts.forEach(p => {
+    const season = seasonOfDate(p.time);
+    const month = monthOfDate(p.time);
+    const dayType = dayTypeOfDate(p.time);
+    if (season) (seasonGroups[season] = seasonGroups[season] || []).push(p);
+    if (month) (monthGroups[month] = monthGroups[month] || []).push(p);
+    if (dayType) (dayTypeGroups[dayType] = dayTypeGroups[dayType] || []).push(p);
+  });
+  const dated = pts.filter(p => p.time).slice().sort((a, b) => a.time.localeCompare(b.time));
+  let range = "—";
+  if (dated.length) {
+    const a = dated[0].time, b = dated[dated.length - 1].time;
+    range = (a === b) ? a : a + " → " + b;
+  }
+  document.getElementById("homeStats").innerHTML =
+    statCell("情绪总数", n) +
+    statCell("覆盖场景", scenes.size) +
+    statCell("常见季节", topKeyLabel(seasonGroups)) +
+    statCell("时间跨度", range);
+
+  // 情绪洞察
+  const insightEl = document.getElementById("homeInsights");
+
+  // 1) 矛盾情绪：主情绪与副情绪效价相反 = 「两种相反的情绪同时存在」
+  const contra = [];
+  pts.forEach(p => {
+    const c = colorOf(p);
+    if (p.color2 && p.color2 !== c) {
+      const r = analyzeEmotion(emotionText(p));
+      if (typeof r.v2 === "number" && r.v * r.v2 < 0) {
+        contra.push({ c1: r.color, c2: r.color2, main: r.word, second: r.word2 });
+      }
+    }
+  });
+
+  // 2) 场景规律：按场景聚合，自动浮现「在这里我通常是什么感觉」
+  const groups = {};
+  pts.forEach(p => {
+    const key = (p.scene && p.scene !== "不指定") ? p.scene : (p.name || "");
+    if (!key) return;
+    (groups[key] = groups[key] || []).push(p);
+  });
+  const insights = Object.keys(groups).map(key => {
+    const arr = groups[key];
+    let sv = 0, sa = 0, matched = 0;
+    arr.forEach(p => {
+      const r = analyzeEmotion(emotionText(p));
+      if (r.found) { sv += r.v; sa += r.a; matched++; }
+    });
+    return { key, n: arr.length, matched, v: sv / matched, a: sa / matched };
+  }).filter(g => g.n >= 2 && g.matched > 0)
+    .sort((a, b) => b.v - a.v);
+
+  const seasonInsights = groupedMoodInsights(pts, p => seasonOfDate(p.time), "在");
+  const monthInsights = groupedMoodInsights(pts, p => monthOfDate(p.time), "在");
+  const dayTypeInsights = groupedMoodInsights(pts, p => dayTypeOfDate(p.time), "在");
+
+  let insightHtml = "";
+  if (contra.length) {
+    const ex = contra[0];
+    insightHtml += `<div class="insight">
+      <span class="in-dot dual" style="--c:${ex.c1};--c2:${ex.c2}"></span>
+      <span class="in-text">有 ${contra.length} 笔「${escapeHtml(ex.main)}」与「${escapeHtml(ex.second)}」同时出现的复杂时刻——相反的情绪，可以同时是真的<span class="in-count">（${contra.length} 笔）</span></span>
+    </div>`;
+  }
+  insightHtml += insights.map(g =>
+    `<div class="insight">
+      <span class="in-dot" style="--c:${emotionColor(g.v, g.a)}"></span>
+      <span class="in-text">在「${escapeHtml(g.key)}」里，我通常${valencePhrase(g.v)}<span class="in-count">（${g.n} 笔）</span></span>
+    </div>`).join("");
+
+  insightHtml += seasonInsights.slice(0, 4).map(g =>
+    `<div class="insight">
+      <span class="in-dot" style="--c:${emotionColor(g.v, g.a)}"></span>
+      <span class="in-text">${escapeHtml(g.prefix)}「${escapeHtml(g.key)}」，我的情绪通常${valencePhrase(g.v)}<span class="in-count">（${g.n} 笔）</span></span>
+    </div>`).join("");
+
+  insightHtml += dayTypeInsights.slice(0, 2).map(g =>
+    `<div class="insight">
+      <span class="in-dot" style="--c:${emotionColor(g.v, g.a)}"></span>
+      <span class="in-text">${escapeHtml(g.prefix)}「${escapeHtml(g.key)}」，我的情绪通常${valencePhrase(g.v)}<span class="in-count">（${g.n} 笔）</span></span>
+    </div>`).join("");
+
+  insightHtml += monthInsights.slice(0, 3).map(g =>
+    `<div class="insight">
+      <span class="in-dot" style="--c:${emotionColor(g.v, g.a)}"></span>
+      <span class="in-text">${escapeHtml(g.key)}出现得比较多，我通常${valencePhrase(g.v)}<span class="in-count">（${g.n} 笔）</span></span>
+    </div>`).join("");
+
+  insightEl.innerHTML = insightHtml ||
+    `<div class="in-hint">在同一个地方、季节、月份或周末 / 工作日留下 2 笔以上，这里就会浮现出你的「情绪规律」；把「又开心又难过」写下来，会浮现出你的「复杂时刻」。</div>`;
+
+  // 情绪光谱（按时间从旧到新，左→右）
+  const specEl = document.getElementById("homeSpectrum");
+  if (!n) {
+    specEl.classList.add("spectrum-empty");
+    specEl.textContent = "还没有留下任何一笔。回到地图上，落一个情绪点吧。";
+  } else {
+    specEl.classList.remove("spectrum-empty");
+    const chrono = pts.slice().reverse(); // 旧 → 新
+    specEl.innerHTML = chrono.map(p =>
+      `<i style="background:${colorOf(p)};flex-grow:1"></i>`).join("");
+  }
+
+  // 时间线
+  const listEl = document.getElementById("homeList");
+  if (!n) {
+    listEl.innerHTML = `<div class="hi-sub">还没有记录。</div>`;
+  } else {
+    listEl.innerHTML = pts.map(p => {
+      const where = (p.scene && p.scene !== "不指定") ? p.scene : (p.name || "未命名地点");
+      const note = p.note ? " · " + p.note : "";
+      const c = colorOf(p);
+      const dual = p.color2 && p.color2 !== c;
+      return `<div class="home-item" data-id="${escapeHtml(p.id)}">
+        <span class="hd${dual ? " dual" : ""}" style="--c:${c}${dual ? ";--c2:" + p.color2 : ""}"></span>
+        <div class="hi-main">
+          <div class="hi-em">${escapeHtml(emotionText(p) || "（未填写情绪）")}</div>
+          <div class="hi-sub">${escapeHtml(where + note)}</div>
+        </div>
+        <span class="hi-date">${escapeHtml(p.time || "")}</span>
+        <div class="hi-btns">
+          <button class="ed" type="button">编辑</button>
+          <button class="del" type="button">删除</button>
+        </div>
+      </div>`;
+    }).join("");
+
+    listEl.querySelectorAll(".home-item").forEach(item => {
+      const id = item.dataset.id;
+      item.querySelector(".ed").addEventListener("click", () => {
+        const p = savedPoints.find(x => x.id === id);
+        if (!p) return;
+        closeHome();
+        if (map) openEditPanel(p); // map 未加载（如无 key）时退化为仅关闭主页
+      });
+      item.querySelector(".del").addEventListener("click", () => {
+        deletePoint(id);
+        renderHome();
+      });
+    });
+  }
+}
+
+function openHome() { renderHome(); homeView.classList.add("show"); }
+function closeHome() { homeView.classList.remove("show"); }
+
+authorBtn.addEventListener("click", () => { isAuthed() ? openHome() : openLogin(); });
+document.getElementById("demoToggle").addEventListener("click", () => {
+  setDemoHidden(!demoHidden);
+});
+loginSubmit.addEventListener("click", tryLogin);
+loginCancel.addEventListener("click", closeLogin);
+authToggle.addEventListener("click", () => {
+  setAuthMode(authMode === "login" ? "register" : "login");
+  renderAuthEmoji();
+});
+authEmoji.addEventListener("click", (e) => {
+  const b = e.target.closest(".emo");
+  if (!b) return;
+  selectedEmoji = b.dataset.e;
+  renderAuthEmoji();
+});
+authUser.addEventListener("keydown", (e) => { if (e.key === "Enter") tryLogin(); });
+authPw.addEventListener("keydown", (e) => { if (e.key === "Enter") tryLogin(); });
+loginModal.addEventListener("click", (e) => { if (e.target === loginModal) closeLogin(); });
+homeView.addEventListener("click", (e) => { if (e.target === homeView) closeHome(); });
+homeClose.addEventListener("click", closeHome);
+homeExport.addEventListener("click", exportPoints);
+homeImport.addEventListener("click", () => importFile.click());
+importFile.addEventListener("change", () => importPointsFile(importFile.files && importFile.files[0]));
+homeLogout.addEventListener("click", () => {
+  setSession(null);
+  updateAuthorBtn();
+  if (map) renderSavedMarkers();
+  closeHome();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { closeLogin(); closeHome(); }
+});
+
+updateAuthorBtn();
+updateDemoToggle();
+updateCounter(); // 即使地图没加载（无 key / 被墙），底部计数也正确
+
+</script>
+</body>
+</html>
