@@ -389,7 +389,7 @@
   <div id="header">
     <h1>深圳情绪地图</h1>
     <div class="sub">把这一刻的情绪，落在城市的坐标上。<br />空城里，原来也有人在这里。</div>
-    <button id="authorBtn" class="author-btn" type="button">作者入口</button>
+    <button id="authorBtn" class="author-btn" type="button">登录</button>
   </div>
   <div id="searchWrap">
     <div class="search-row">
@@ -485,17 +485,14 @@
 <div id="loginModal">
   <div class="box">
     <h2 id="authTitle">登录</h2>
-    <div class="sub">输入作者口令进入你的情绪日记。<br />公共地图上，没有人能知道这些点是谁的。</div>
-    <input id="authUser" type="text" placeholder="用户名（作者入口可留空）" autocomplete="off" />
-    <input id="authPw" type="password" placeholder="口令" autocomplete="off" />
-    <div class="emoji-row" id="authEmoji"></div>
+    <div class="sub">输入邮箱，我们会发一封带登录链接的邮件。<br />点一下链接就能进入你的情绪日记；公共地图上，没有人能知道这些点是谁的。</div>
+    <input id="authEmail" type="email" placeholder="你的邮箱" autocomplete="off" />
     <div id="loginErr"></div>
     <div class="login-actions">
       <button id="loginCancel" class="ghost" type="button">取消</button>
-      <button id="authToggle" class="ghost" type="button">去注册</button>
-      <button id="loginSubmit" class="primary" type="button">进入</button>
+      <button id="loginSubmit" class="primary" type="button">发登录链接</button>
     </div>
-    <div class="login-note">作者入口口令：<code>sz2026</code>。demo 账号只存在本地浏览器，纯前端校验，不是真正的安全登录。</div>
+    <div class="login-note">免密登录：不设密码，每次用邮箱收链接进入。数据安全由 Supabase Auth + 行级权限（RLS）保护。</div>
   </div>
 </div>
 
@@ -504,8 +501,8 @@
     <div class="home-head">
       <div class="home-avatar" id="homeAvatar">🌗</div>
       <div class="home-id">
-        <h2 id="homeName">作者</h2>
-        <div class="tag" id="homeTag">地图作者</div>
+        <h2 id="homeName">我</h2>
+        <div class="tag" id="homeTag">我的情绪日记 · 公共地图上匿名</div>
       </div>
       <div class="home-actions">
         <button id="homeExport" type="button">导出</button>
@@ -525,6 +522,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ============================================================
  * 配置：在这里填你的高德 key
@@ -536,17 +534,19 @@ const AMAP_KEY      = "130eb63be3679fd58531640e3de98767";   // ← 高德 JS API
 const AMAP_SECURITY = "98640a3e50e2273c144b44f5f9ccc4f1";   // ← 安全密钥（securityJsCode），地点搜索需要
 
 /* ============================================================
- * 账号（本地模拟）—— demo
- * 每个人都注册一个账号，但账号只用来「保存自己的数据」；公共地图
- * 上谁也看不到你的 id，只知道这里有别人的各种情绪。这里全部是
- * 纯前端的 localStorage 校验，不是真正的安全登录——上线后必须接后端。
+ * Supabase（Auth + 数据库）
+ * 在这里填你的 Supabase 项目信息：
+ *   SUPABASE_URL      — Project URL（形如 https://xxxx.supabase.co）
+ *   SUPABASE_ANON_KEY — anon / publishable key（可暴露在浏览器，切勿填 service_role）
+ * 登录用「邮箱免密 Magic Link」：填邮箱 → 收一封带登录链接的邮件 → 点击即登录。
+ * 数据读写由 RLS（行级权限）保护：每人只能增删改自己的记录。
  * ============================================================ */
-const EMOJIS = ["🌗", "🌱", "🌊", "🔥", "🌙", "☀️", "🌧️", "🌈", "🍃", "⭐", "🌸", "🐚"];
-const AUTHOR_USER = "作者";
-const AUTHOR_PASS = "sz2026";
-const AUTHOR_EMOJI = "🌗";
-const LS_USERS_KEY = "sz_emotion_map_users_v1";      // { name: {name, pass, emoji} }
-const LS_SESSION_KEY = "sz_emotion_map_session_v1";  // 当前登录用户名
+const SUPABASE_URL      = "https://YOUR-PROJECT.supabase.co";  // ← 填你的 Supabase Project URL
+const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLISHABLE-KEY";          // ← 填你的 anon / publishable key
+
+const supabase = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 /* ============================================================
  * 走向（颜色 = 转折的方向）—— 仅作为旧数据兜底，新输入不再用
@@ -833,8 +833,8 @@ function renderPoint(p) {
       const pos = e.target.getPosition();
       p.lng = pos.getLng();
       p.lat = pos.getLat();
-      claimPoint(p);
       saveAll();
+      updatePointInBackend(p);
     });
   }
   marker.on("click", () => {
@@ -1408,7 +1408,8 @@ function closePanel() {
   draftPos = null;
 }
 
-function pointForBackend(p) {
+// 前端点 → Supabase 行（user_id 来自当前登录用户，RLS 校验 auth.uid() = user_id）
+function pointRow(p) {
   return {
     id: p.id,
     lng: p.lng,
@@ -1418,31 +1419,72 @@ function pointForBackend(p) {
     emotion: p.emotion || "",
     emotion2: p.emotion2 || "",
     color: p.color || "",
-    color2: p.color2 || "",
+    color2: p.color2 || null,
     note: p.note || "",
-    time: p.time || "",
+    emotion_date: p.time || null,
+    captured_at: p.capturedAt || new Date().toISOString(),
+    user_id: authUserId,
+  };
+}
+
+// Supabase 行 → 前端点
+function toClientPoint(row) {
+  return {
+    id: row.id,
+    lng: Number(row.lng),
+    lat: Number(row.lat),
+    name: row.name || "",
+    scene: row.scene || "不指定",
+    emotion: row.emotion || "",
+    emotion2: row.emotion2 || "",
+    color: row.color || "",
+    color2: row.color2 || null,
+    note: row.note || "",
+    time: row.emotion_date || "",
+    capturedAt: row.captured_at || row.created_at,
+    user_id: row.user_id || null,
   };
 }
 
 async function loadRemotePoints() {
+  if (!supabase) return;
   try {
-    const res = await fetch("/.netlify/functions/points");
-    if (!res.ok) return;
-    const data = await res.json();
-    remotePoints = Array.isArray(data.points) ? data.points : [];
+    const { data, error } = await supabase
+      .from("emotion_points")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    remotePoints = Array.isArray(data) ? data.map(toClientPoint) : [];
     if (map) renderRemoteMarkers();
     updateCounter();
   } catch (e) {}
 }
 
 async function syncPointToBackend(p) {
+  if (!supabase || !authUserId) return;
   try {
-    const res = await fetch("/.netlify/functions/points", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(pointForBackend(p)),
-    });
-    if (res.ok) loadRemotePoints();
+    const { error } = await supabase.from("emotion_points").insert(pointRow(p));
+    if (error) throw error;
+    await loadRemotePoints();
+  } catch (e) {}
+}
+
+async function updatePointInBackend(p) {
+  if (!supabase || !authUserId) return;
+  try {
+    const { error } = await supabase.from("emotion_points").update(pointRow(p)).eq("id", p.id);
+    if (error) throw error;
+    await loadRemotePoints();
+  } catch (e) {}
+}
+
+async function deletePointFromBackend(id) {
+  if (!supabase || !authUserId) return;
+  try {
+    const { error } = await supabase.from("emotion_points").delete().eq("id", id);
+    if (error) throw error;
+    await loadRemotePoints();
   } catch (e) {}
 }
 
@@ -1480,8 +1522,7 @@ ipSubmit.addEventListener("click", function () {
   const emotion2 = emotionInput2.value.trim();
   if (!draftPos) { showErr("请先在搜索框选一个地点"); return; }
   if (!emotion) { showErr("请写下此刻的情绪"); return; }
-  const original = editingId ? savedPoints.find(p => p.id === editingId) : null;
-  if (!currentUser() && !original) { openLogin(); authErr("先登录，你的情绪才能存进自己的日记——公共地图上依旧匿名。", true); return; }
+  if (!isAuthed()) { openLogin(); authErr("先登录，你的情绪才能存进自己的日记——公共地图上依旧匿名。", true); return; }
 
   const data = {
     lng: draftPos.lng,
@@ -1495,24 +1536,36 @@ ipSubmit.addEventListener("click", function () {
     note: noteInput.value.trim(),
     time: timeInput.value,
     capturedAt: new Date().toISOString(),
-    owner: currentUser() || (original && original.owner) || null,
   };
 
   if (editingId) {
-    const i = savedPoints.findIndex(p => p.id === editingId);
-    if (i >= 0) {
-      const updated = Object.assign({}, savedPoints[i], data);
-      savedPoints[i] = updated;
-      savedMarkers[i].setMap(null);
-      savedMarkers[i] = renderPoint(updated);
+    const original = findPointById(editingId);
+    if (original && original.remote) {
+      // 编辑的是云端自己的点（如换设备后）：直接改 Supabase 并重渲染
+      const ri = remotePoints.findIndex(p => p.id === editingId);
+      if (ri >= 0) {
+        remotePoints[ri] = Object.assign({}, original, data);
+        updatePointInBackend(remotePoints[ri]);
+      }
+    } else {
+      // 编辑本地点：更新 localStorage 备份 + 同步 Supabase
+      const i = savedPoints.findIndex(p => p.id === editingId);
+      if (i >= 0) {
+        const updated = Object.assign({}, savedPoints[i], data);
+        savedPoints[i] = updated;
+        savedMarkers[i].setMap(null);
+        savedMarkers[i] = renderPoint(updated);
+        saveAll();
+        updatePointInBackend(updated);
+      }
     }
   } else {
     const p = Object.assign({ id: "s" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) }, data);
     savedPoints.push(p);
     savedMarkers.push(renderPoint(p));
+    saveAll();
     syncPointToBackend(p);
   }
-  saveAll();
   renderRemoteMarkers();
   updateCounter();
   closePanel();
@@ -1530,15 +1583,11 @@ function showErr(msg) {
 }
 
 /* ============================================================
- * 账号（本地模拟）+ 个人主页
+ * 账号（Supabase Auth · 邮箱免密）+ 个人主页
  * ============================================================ */
 const authorBtn = document.getElementById("authorBtn");
 const loginModal = document.getElementById("loginModal");
-const authUser = document.getElementById("authUser");
-const authPw = document.getElementById("authPw");
-const authEmoji = document.getElementById("authEmoji");
-const authToggle = document.getElementById("authToggle");
-const authTitle = document.getElementById("authTitle");
+const authEmail = document.getElementById("authEmail");
 const loginErr = document.getElementById("loginErr");
 const loginSubmit = document.getElementById("loginSubmit");
 const loginCancel = document.getElementById("loginCancel");
@@ -1549,54 +1598,32 @@ const homeExport = document.getElementById("homeExport");
 const homeImport = document.getElementById("homeImport");
 const importFile = document.getElementById("importFile");
 
-let authMode = "login"; // "login" | "register"
-let selectedEmoji = EMOJIS[0];
+let authUserId = null;        // 当前 Supabase 登录用户 id（未登录为 null）
+let currentUserEmail = null;  // 当前登录邮箱
 
-function getUsers() {
-  try { return JSON.parse(localStorage.getItem(LS_USERS_KEY)) || {}; } catch (e) { return {}; }
-}
-function saveUsers(u) {
-  try { localStorage.setItem(LS_USERS_KEY, JSON.stringify(u)); } catch (e) {}
-}
-function currentUser() {
-  try { return localStorage.getItem(LS_SESSION_KEY); } catch (e) { return null; }
-}
-function setSession(name) {
-  try { name ? localStorage.setItem(LS_SESSION_KEY, name) : localStorage.removeItem(LS_SESSION_KEY); } catch (e) {}
-}
+function isAuthed() { return !!authUserId; }
+
 function currentProfile() {
-  const u = currentUser();
-  if (u === AUTHOR_USER) return { name: AUTHOR_USER, pass: AUTHOR_PASS, emoji: AUTHOR_EMOJI, author: true };
-  return u ? (getUsers()[u] || null) : null;
-}
-function isAuthed() { return !!currentProfile(); }
-function isMine(p) {
-  if (!p || !p.id || p.remote) return false;
-  return !p.owner || p.owner === currentUser();
+  return authUserId ? { name: currentUserEmail || "我", emoji: "🌗" } : null;
 }
 
-function claimPoint(p) {
-  if (p && p.id && !p.owner && currentUser()) p.owner = currentUser();
+// 一个点是否属于当前登录用户（本地备份算作本浏览器自己的点）
+function isMine(p) {
+  if (!p || !p.id) return false;
+  if (p.remote) return !!authUserId && p.user_id === authUserId;
+  return true;
 }
 
 function updateAuthorBtn() {
-  authorBtn.textContent = isAuthed() ? "我的主页" : "作者入口";
+  authorBtn.textContent = isAuthed() ? "我的主页" : "登录";
   authorBtn.classList.toggle("on", isAuthed());
 }
 
-function renderAuthEmoji() {
-  authEmoji.innerHTML = EMOJIS.map(e =>
-    `<button type="button" class="emo${e === selectedEmoji ? " on" : ""}" data-e="${e}">${e}</button>`).join("");
-}
-function setAuthMode(mode) {
-  authMode = mode;
-  const reg = mode === "register";
-  authTitle.textContent = reg ? "注册" : "作者入口";
-  authToggle.textContent = reg ? "已有账号，去登录" : "还没有账号，去注册";
-  authEmoji.style.display = reg ? "" : "none";
-  authUser.value = "";
-  authPw.value = "";
-  authErr("", false);
+function applySession(session) {
+  authUserId = (session && session.user) ? session.user.id : null;
+  currentUserEmail = (session && session.user) ? (session.user.email || "") : null;
+  updateAuthorBtn();
+  if (map) renderRemoteMarkers();
 }
 
 function authErr(msg, info) {
@@ -1605,57 +1632,54 @@ function authErr(msg, info) {
   loginErr.style.display = msg ? "block" : "none";
 }
 
-function openLogin(mode) {
-  setAuthMode(mode || "login");
-  renderAuthEmoji();
+function openLogin() {
+  authErr("", false);
   loginModal.classList.add("show");
-  setTimeout(() => authPw.focus(), 50);
+  setTimeout(() => authEmail.focus(), 50);
 }
 function closeLogin() { loginModal.classList.remove("show"); }
 
-function tryLogin() {
-  const name = authUser.value.trim();
-  const pw = authPw.value;
-  if (!pw) { authErr("请填写口令。", false); return; }
-  const users = getUsers();
-  if (authMode === "register") {
-    if (!name) { authErr("请填写用户名。", false); return; }
-    if (users[name]) { authErr("这个用户名已被注册，试试直接登录。", false); return; }
-    users[name] = { name: name, pass: pw, emoji: selectedEmoji };
-    saveUsers(users);
-    setSession(name);
-    updateAuthorBtn();
-    if (map) renderSavedMarkers();
-    closeLogin();
-    openHome();
-  } else {
-    if ((!name || name === AUTHOR_USER) && pw === AUTHOR_PASS) {
-      setSession(AUTHOR_USER);
-      updateAuthorBtn();
-      if (map) renderSavedMarkers();
-      closeLogin();
-      openHome();
-      return;
-    }
-    if (!name) { authErr("普通账号请填写用户名；作者入口只需要填作者口令。", false); return; }
-    const u = users[name];
-    if (!u) { authErr("还没有这个账号，先去注册一个。", false); return; }
-    if (u.pass !== pw) { authErr("口令不对，再试一次。", false); return; }
-    setSession(name);
-    updateAuthorBtn();
-    if (map) renderSavedMarkers();
-    closeLogin();
-    openHome();
+// 邮箱免密登录：发一封带登录链接的邮件
+async function sendMagicLink() {
+  const email = authEmail.value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { authErr("请填写有效的邮箱。", false); return; }
+  if (!supabase) { authErr("登录服务还没配置好（缺 SUPABASE_URL / SUPABASE_ANON_KEY）。", false); return; }
+  loginSubmit.disabled = true;
+  authErr("正在发送登录链接…", true);
+  try {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin + window.location.pathname },
+    });
+    if (error) { authErr("发送失败：" + (error.message || "请稍后再试"), false); return; }
+    authErr("已发送登录链接到 " + email + "，去邮箱点一下即可进入。", true);
+  } catch (e) {
+    authErr("发送失败，请稍后再试。", false);
+  } finally {
+    loginSubmit.disabled = false;
   }
 }
 
+function findPointById(id) {
+  return savedPoints.find(p => p.id === id) || remotePoints.find(p => p.id === id) || null;
+}
+
 function deletePoint(id) {
-  const i = savedPoints.findIndex(p => p.id === id);
-  if (i < 0) return;
-  if (savedMarkers[i]) savedMarkers[i].setMap(null);
-  savedPoints.splice(i, 1);
-  savedMarkers.splice(i, 1);
-  saveAll();
+  const li = savedPoints.findIndex(p => p.id === id);
+  if (li >= 0) {
+    if (savedMarkers[li]) savedMarkers[li].setMap(null);
+    savedPoints.splice(li, 1);
+    savedMarkers.splice(li, 1);
+    saveAll();
+    deletePointFromBackend(id);
+  } else {
+    const ri = remotePoints.findIndex(p => p.id === id);
+    if (ri >= 0) {
+      deletePointFromBackend(id);
+      remotePoints.splice(ri, 1);
+      if (map) renderRemoteMarkers();
+    }
+  }
   updateCounter();
 }
 
@@ -1802,8 +1826,8 @@ function renderHome() {
   document.getElementById("homeName").textContent = prof ? prof.name : "我";
   document.getElementById("homeTag").textContent = "我的情绪日记 · 公共地图上匿名";
 
-  // 只看「我」的每一笔（最新的在前，无日期的排最后）
-  const pts = savedPoints.filter(isMine).slice().sort((a, b) => {
+  // 只看「我」的每一笔（本地点 + 云端属于我的点，最新的在前，无日期的排最后）
+  const pts = savedPoints.concat(remotePoints.filter(isMine)).slice().sort((a, b) => {
     const ta = a.time || "", tb = b.time || "";
     if (ta !== tb) return tb.localeCompare(ta);
     return 0;
@@ -1946,7 +1970,7 @@ function renderHome() {
     listEl.querySelectorAll(".home-item").forEach(item => {
       const id = item.dataset.id;
       item.querySelector(".ed").addEventListener("click", () => {
-        const p = savedPoints.find(x => x.id === id);
+        const p = findPointById(id);
         if (!p) return;
         closeHome();
         if (map) openEditPanel(p); // map 未加载（如无 key）时退化为仅关闭主页
@@ -1966,35 +1990,36 @@ authorBtn.addEventListener("click", () => { isAuthed() ? openHome() : openLogin(
 document.getElementById("demoToggle").addEventListener("click", () => {
   setDemoHidden(!demoHidden);
 });
-loginSubmit.addEventListener("click", tryLogin);
+loginSubmit.addEventListener("click", sendMagicLink);
 loginCancel.addEventListener("click", closeLogin);
-authToggle.addEventListener("click", () => {
-  setAuthMode(authMode === "login" ? "register" : "login");
-  renderAuthEmoji();
-});
-authEmoji.addEventListener("click", (e) => {
-  const b = e.target.closest(".emo");
-  if (!b) return;
-  selectedEmoji = b.dataset.e;
-  renderAuthEmoji();
-});
-authUser.addEventListener("keydown", (e) => { if (e.key === "Enter") tryLogin(); });
-authPw.addEventListener("keydown", (e) => { if (e.key === "Enter") tryLogin(); });
+authEmail.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMagicLink(); });
 loginModal.addEventListener("click", (e) => { if (e.target === loginModal) closeLogin(); });
 homeView.addEventListener("click", (e) => { if (e.target === homeView) closeHome(); });
 homeClose.addEventListener("click", closeHome);
 homeExport.addEventListener("click", exportPoints);
 homeImport.addEventListener("click", () => importFile.click());
 importFile.addEventListener("change", () => importPointsFile(importFile.files && importFile.files[0]));
-homeLogout.addEventListener("click", () => {
-  setSession(null);
-  updateAuthorBtn();
+homeLogout.addEventListener("click", async () => {
+  if (supabase) await supabase.auth.signOut();
+  applySession(null);
   if (map) renderSavedMarkers();
   closeHome();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { closeLogin(); closeHome(); }
 });
+
+// 恢复会话（含魔法链接跳转回来后的 token 解析）+ 监听登录状态变化
+if (supabase) {
+  supabase.auth.getSession().then(({ data, error }) => {
+    if (!error) applySession(data && data.session);
+  }).catch(() => {});
+  supabase.auth.onAuthStateChange((event, session) => {
+    applySession(session);
+    if (event === "SIGNED_IN") closeLogin();
+    if (event === "SIGNED_OUT") closeHome();
+  });
+}
 
 updateAuthorBtn();
 updateDemoToggle();
