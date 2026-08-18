@@ -22,11 +22,15 @@ create table if not exists public.emotion_points (
   color text default '',
   color2 text,
   note text default '',
+  display_name text default '',
   emotion_date date,
   captured_at timestamptz default now(),
   created_at timestamptz default now(),
   user_id uuid references auth.users(id) on delete set null
 );
+
+alter table public.emotion_points
+  add column if not exists display_name text default '';
 
 create index if not exists emotion_points_user_id_idx
   on public.emotion_points(user_id);

@@ -886,7 +886,10 @@ function showTip(p, x, y) {
   const dual = !!p.color2 && p.color2 !== c;
   let style = "--c:" + c;
   if (dual) style += ";--c2:" + p.color2;
+  const who = p.displayName || p.display_name || "匿名";
+  const ym = yearMonthOfPoint(p);
   tip.innerHTML =
+    `<div class="t-scene">${escapeHtml(who)} · ${escapeHtml(ym || "未标记年月")}</div>` +
     `<div class="t-scene">${escapeHtml(p.scene)}</div>` +
     `<div class="t-fromto"><span class="t-dot${dual ? " dual" : ""}" style="${style}"></span>${escapeHtml(emotionText(p))}</div>`;
   tip.style.left = x + "px";
@@ -895,6 +898,12 @@ function showTip(p, x, y) {
 }
 function hideTip() {
   tip.classList.remove("show");
+}
+
+function yearMonthOfPoint(p) {
+  const s = p.time || p.emotion_date || p.capturedAt || p.created_at || "";
+  const m = String(s).match(/^(\d{4})-(\d{2})/);
+  return m ? (m[1] + "年" + Number(m[2]) + "月") : "";
 }
 
 function updateCounter() {
@@ -1454,6 +1463,7 @@ function pointRow(p) {
     note: p.note || "",
     emotion_date: p.time || null,
     captured_at: p.capturedAt || new Date().toISOString(),
+    display_name: p.displayName || profileName(authUserId) || "",
     user_id: authUserId,
   };
 }
@@ -1473,6 +1483,7 @@ function toClientPoint(row) {
     note: row.note || "",
     time: row.emotion_date || "",
     capturedAt: row.captured_at || row.created_at,
+    displayName: row.display_name || "",
     user_id: row.user_id || null,
   };
 }
@@ -1567,6 +1578,7 @@ ipSubmit.addEventListener("click", function () {
     note: noteInput.value.trim(),
     time: timeInput.value,
     capturedAt: new Date().toISOString(),
+    displayName: profileName(authUserId) || "",
   };
 
   if (editingId) {
@@ -2046,6 +2058,16 @@ profileSave.addEventListener("click", () => {
   if (!authUserId) return;
   const name = profileNameInput.value.trim().slice(0, 20);
   saveProfileName(authUserId, name);
+  savedPoints.forEach(p => { p.displayName = name; });
+  saveAll();
+  remotePoints.filter(isMine).forEach(p => {
+    p.displayName = name;
+    updatePointInBackend(p);
+  });
+  if (map) {
+    renderSavedMarkers();
+    renderRemoteMarkers();
+  }
   renderHome();
 });
 profileNameInput.addEventListener("keydown", (e) => {
