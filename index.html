@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>深圳情绪地图 · 空城里有共鸣</title>
+<title>Emotion Map · 空城里有共鸣</title>
 <style>
   :root {
     --bg: #0a0e14;
@@ -409,7 +409,7 @@
 
 <div id="topbar">
   <div id="header">
-    <h1>深圳情绪地图</h1>
+    <h1>Emotion Map</h1>
     <div class="sub">把这一刻的情绪，落在城市的坐标上。<br />空城里，原来也有人在这里。</div>
     <button id="authorBtn" class="author-btn" type="button">登录</button>
   </div>
@@ -429,7 +429,7 @@
 <div id="bottombar">
   <div id="legend" class="pill"></div>
   <div id="counter" class="pill">已有 <b id="count">0</b> 个情绪</div>
-  <button id="demoToggle" class="pill" type="button">隐藏演示</button>
+  <button id="demoToggle" class="pill" type="button" style="display:none">隐藏演示</button>
 </div>
 
 <div id="tip"></div>
@@ -446,7 +446,7 @@
   <div class="ip-field">
     <label>地点</label>
     <div class="field-row">
-      <input id="nameInput" placeholder="例如：深圳北站" />
+      <input id="nameInput" placeholder="例如：上海外滩" />
       <button id="geoBtn" class="mini-btn" type="button">当前位置</button>
     </div>
   </div>
@@ -506,7 +506,7 @@
 
 <div id="loginModal">
   <div class="box">
-    <h2 id="authTitle">继续使用深圳情绪地图</h2>
+    <h2 id="authTitle">继续使用 Emotion Map</h2>
     <div class="sub">可以先以游客身份留下记录；绑定邮箱后，可以在其他设备恢复你的记录。</div>
     <button id="guestSubmit" class="guest-login" type="button">以游客身份继续</button>
     <div class="login-sep"><span>或者</span></div>
@@ -733,8 +733,7 @@ const SCENE_GROUPS = [
 ];
 
 /* ============================================================
- * 公共演示点：没有 id / owner，只读；用来让第一次打开页面的人
- * 立刻看见“这座城里已经有人在这里”。
+ * 公共演示点已清空；保留结构，方便以后按需恢复。
  * ============================================================ */
 function seedPoint(lng, lat, name, scene, emotion, note, time) {
   const r = analyzeEmotion(emotion);
@@ -745,34 +744,7 @@ function seedPoint(lng, lat, name, scene, emotion, note, time) {
   };
 }
 
-const SEED_POINTS = [
-  seedPoint(114.02919, 22.60984, "深圳北站", "高铁站 / 火车站", "有点兴奋又有点害怕", "第一次拖着箱子来到深圳。", "2026-08-01"),
-  seedPoint(113.80998, 22.63988, "宝安国际机场", "机场", "失落", "离开的广播响起时，突然不知道该想谁。", "2026-08-02"),
-  seedPoint(114.05454, 22.52291, "福田 CBD", "CBD / 写字楼区", "焦虑", "楼都亮着，我也还没下班。", "2026-08-03"),
-  seedPoint(113.93041, 22.53332, "腾讯滨海大厦", "写字楼 / 工位", "疲惫", "工卡滴的一声，像今天的句号。", "2026-08-04"),
-  seedPoint(114.06895, 22.54310, "市民中心", "办事大厅", "释然", "终于把那件拖了很久的事办完。", "2026-08-04"),
-  seedPoint(114.11711, 22.54847, "罗湖口岸", "口岸 / 过关", "迷茫", "人流往两边走，我站在中间。", "2026-08-05"),
-  seedPoint(113.93643, 22.52770, "深圳湾公园", "海 / 海边", "平静", "风从海面过来，心也慢了一点。", "2026-08-06"),
-  seedPoint(113.99435, 22.53505, "华侨城创意园", "创意园 / 文创街区", "开心", "在一条小路上误打误撞吃到好吃的。", "2026-08-06"),
-  seedPoint(113.89739, 22.57850, "宝安中心", "商圈 / 步行街", "孤独", "身边都是人，但没有一个人等我。", "2026-08-07"),
-  seedPoint(114.02597, 22.54156, "车公庙", "地铁 / 地铁站", "烦躁", "换乘通道里，每个人都走得很急。", "2026-08-07"),
-  seedPoint(114.08357, 22.54065, "华强北", "档口 / 柜台", "期待", "也许今天就能谈成一单。", "2026-08-08"),
-  seedPoint(114.06063, 22.53618, "莲花山公园", "公园", "放松", "爬上来以后，城市终于没有那么吵。", "2026-08-08"),
-  seedPoint(114.25708, 22.72964, "龙岗中心城", "老小区", "想家", "楼下的晚饭味道，像另一个城市。", "2026-08-09"),
-  seedPoint(114.13159, 22.57330, "布吉", "城中村", "心累", "房间很小，梦倒是装得很满。", "2026-08-09"),
-  seedPoint(114.01052, 22.59687, "民治", "合租房", "安静", "室友都睡了，终于轮到自己呼吸。", "2026-08-10"),
-  seedPoint(113.88402, 22.55432, "西乡", "夜市 / 早餐摊", "满足", "一碗热汤，让今晚变得具体。", "2026-08-10"),
-  seedPoint(113.92908, 22.49527, "蛇口码头", "港口 / 码头", "惆怅", "船开走的时候，灯也一盏盏远了。", "2026-08-11"),
-  seedPoint(114.31371, 22.59508, "盐田港", "港口 / 码头", "压抑", "巨大的货柜旁边，人显得很小。", "2026-08-11"),
-  seedPoint(114.21869, 22.70717, "坪山高铁站", "高铁站 / 火车站", "轻松", "终于坐上回去的车。", "2026-08-12"),
-  seedPoint(114.04682, 22.72048, "观澜", "工厂车间 / 流水线", "麻木", "机器不停，手也不能停。", "2026-08-12"),
-  seedPoint(113.94909, 22.74836, "光明城", "学校", "憧憬", "新的校区很远，但像一个开始。", "2026-08-13"),
-  seedPoint(114.50813, 22.59637, "大鹏所城", "古城 / 老街区", "温暖", "旧墙边的灯，把晚上照得很软。", "2026-08-13"),
-  seedPoint(114.31234, 22.60382, "盐田海滨栈道", "海 / 海边", "释然又难过", "有些事想通了，但还是会疼。", "2026-08-14"),
-  seedPoint(113.97302, 22.58783, "西丽", "自习室 / 共享自习室", "不甘", "再刷一套题，也许就能过去。", "2026-08-14"),
-  seedPoint(114.05536, 22.52479, "会展中心", "体育馆 / 会展", "激动", "人群同时亮起手机，像一片潮水。", "2026-08-15"),
-  seedPoint(114.12379, 22.54372, "东门老街", "商圈 / 步行街", "快乐", "买到便宜东西的快乐很朴素。", "2026-08-15"),
-];
+const SEED_POINTS = [];
 
 /* ============================================================
  * 本地数据（localStorage）
@@ -2026,7 +1998,7 @@ function exportPoints() {
   const a = document.createElement("a");
   const date = new Date().toISOString().slice(0, 10);
   a.href = URL.createObjectURL(blob);
-  a.download = "深圳情绪地图备份-" + date + ".json";
+  a.download = "Emotion Map 备份-" + date + ".json";
   document.body.appendChild(a);
   a.click();
   URL.revokeObjectURL(a.href);
