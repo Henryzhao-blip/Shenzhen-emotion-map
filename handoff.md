@@ -21,6 +21,7 @@
 - 意象锁定两个：**共鸣**（同频振动，锚在情绪/场景上，不指向灵魂/交友）、**空城**（底色）。
 - 当前已有后端数据库，但坐标采用**模糊存储**：数据库把经纬度四舍五入到 3 位小数，大约街区/百米级。
 - 登录用 **Supabase Auth 邮箱免密（Magic Link）**；所有注册用户都能写点，但只能增删改自己的记录（RLS 强制）。
+- 支持 **Supabase Anonymous Auth 游客身份**；游客也有真实 `auth.users.id`，权限仍只看 `auth.uid() = user_id`。
 
 ---
 
@@ -70,6 +71,8 @@
 
 - 顶部按钮：`#authorBtn`，未登录显示「登录」，登录后显示「我的主页」。
 - 邮箱免密：`#authEmail` 输入邮箱 → `supabase.auth.signInWithOtp` 发登录链接 → 用户点击邮件里的链接 → `getSession()` 恢复会话。
+- 游客入口：`supabase.auth.signInAnonymously()` 创建真实匿名用户；个人主页可绑定邮箱，使用 `auth.updateUser({ email })` 尽量保留同一个 `auth.users.id`。
+- 个人 profile：`public.profiles` 保存 `display_name` / `is_guest`，游客默认生成「游客 1234」格式展示名。
 - 没有密码、没有注册/登录切换、没有本地模拟账号；旧的 `AUTHOR_USER / AUTHOR_PASS / sz2026` 已删除。
 - 登录态：`authUserId` / `currentUserEmail`（来自 `session.user.id / email`）。
 - `onAuthStateChange` 监听状态变化（`SIGNED_IN` 关登录框、`SIGNED_OUT` 关主页）。

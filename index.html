@@ -300,9 +300,15 @@
   #loginModal input {
     width: 100%; padding: 12px 14px; border-radius: 10px; font-size: 15px;
     background: rgba(255,255,255,0.05); border: 1px solid var(--line); color: var(--text); outline: none;
-    letter-spacing: 4px;
   }
   #loginModal input:focus { border-color: rgba(34,211,238,0.5); }
+  .guest-login {
+    width: 100%; padding: 12px 14px; border-radius: 10px; font-size: 15px; cursor: pointer;
+    background: var(--accent); border: 0; color: #04222a; font-weight: 700;
+  }
+  .login-sep { display: flex; align-items: center; gap: 10px; margin: 16px 0 12px; color: var(--dim); font-size: 12px; }
+  .login-sep::before, .login-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .auth-label { display: block; color: var(--dim); font-size: 12px; margin-bottom: 7px; }
   .login-actions { display: flex; gap: 10px; margin-top: 14px; }
   .login-actions button { flex: 1; padding: 11px; border-radius: 10px; font-size: 14px; cursor: pointer; }
   .login-actions .ghost { background: rgba(255,255,255,0.06); border: 1px solid var(--line); color: var(--dim); }
@@ -337,16 +343,21 @@
   .home-id { min-width: 0; }
   .home-id h2 { margin: 0; font-size: 18px; }
   .home-id .tag { font-size: 12px; color: var(--accent); margin-top: 3px; }
+  .identity-row { font-size: 12px; color: var(--dim); margin-top: 8px; }
   .profile-row { display: flex; gap: 8px; margin-top: 10px; max-width: 320px; }
-  .profile-row input {
+  .profile-row input, .bind-row input {
     flex: 1; min-width: 0; padding: 8px 10px; border-radius: 9px; font-size: 13px;
     background: rgba(255,255,255,0.05); border: 1px solid var(--line); color: var(--text); outline: none;
   }
-  .profile-row input:focus { border-color: rgba(34,211,238,0.5); }
-  .profile-row button {
+  .profile-row input:focus, .bind-row input:focus { border-color: rgba(34,211,238,0.5); }
+  .profile-row button, .bind-row button {
     flex: 0 0 auto; padding: 8px 11px; border-radius: 9px; font-size: 12px; cursor: pointer;
     background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.35); color: var(--accent);
   }
+  .bind-row { display: none; gap: 8px; margin-top: 8px; max-width: 360px; }
+  .bind-row.show { display: flex; }
+  .bind-msg { display: none; margin-top: 7px; font-size: 11.5px; color: var(--dim); }
+  .bind-msg.show { display: block; }
   .home-actions { margin-left: auto; display: flex; gap: 8px; flex: 0 0 auto; }
   .home-actions button {
     padding: 8px 14px; border-radius: 10px; font-size: 13px; cursor: pointer;
@@ -495,15 +506,18 @@
 
 <div id="loginModal">
   <div class="box">
-    <h2 id="authTitle">登录</h2>
-    <div class="sub">输入邮箱，我们会发一封带登录链接的邮件。<br />点一下链接就能进入你的情绪日记；公共地图上，没有人能知道这些点是谁的。</div>
+    <h2 id="authTitle">继续使用深圳情绪地图</h2>
+    <div class="sub">可以先以游客身份留下记录；绑定邮箱后，可以在其他设备恢复你的记录。</div>
+    <button id="guestSubmit" class="guest-login" type="button">以游客身份继续</button>
+    <div class="login-sep"><span>或者</span></div>
+    <label class="auth-label" for="authEmail">邮箱登录 / 绑定已有账号</label>
     <input id="authEmail" type="email" placeholder="你的邮箱" autocomplete="off" />
     <div id="loginErr"></div>
     <div class="login-actions">
       <button id="loginCancel" class="ghost" type="button">取消</button>
       <button id="loginSubmit" class="primary" type="button">发登录链接</button>
     </div>
-    <div class="login-note">免密登录：不设密码，每次用邮箱收链接进入。数据安全由 Supabase Auth + 行级权限（RLS）保护。</div>
+    <div class="login-note">游客和邮箱用户都会获得真实 Supabase 用户 ID。权限始终由 RLS 保护。</div>
   </div>
 </div>
 
@@ -514,10 +528,16 @@
       <div class="home-id">
         <h2 id="homeName">我</h2>
         <div class="tag" id="homeTag">我的情绪日记 · 公共地图上匿名</div>
+        <div class="identity-row" id="identityStatus">当前身份：未登录</div>
         <div class="profile-row">
           <input id="profileNameInput" type="text" maxlength="20" placeholder="给自己取一个名字" autocomplete="off" />
           <button id="profileSave" type="button">保存</button>
         </div>
+        <div class="bind-row" id="bindRow">
+          <input id="bindEmail" type="email" placeholder="绑定邮箱，方便跨设备恢复" autocomplete="off" />
+          <button id="bindSubmit" type="button">绑定邮箱</button>
+        </div>
+        <div class="bind-msg" id="bindMsg"></div>
       </div>
       <div class="home-actions">
         <button id="homeExport" type="button">导出</button>
@@ -1522,6 +1542,7 @@ function closePanel() {
 
 // 前端点 → Supabase 行（user_id 来自当前登录用户，RLS 校验 auth.uid() = user_id）
 function pointRow(p) {
+  const prof = currentProfile();
   return {
     id: p.id,
     lng: p.lng,
@@ -1535,7 +1556,7 @@ function pointRow(p) {
     note: p.note || "",
     emotion_date: p.time || null,
     captured_at: p.capturedAt || new Date().toISOString(),
-    display_name: p.displayName || profileName(authUserId) || "",
+    display_name: p.displayName || (prof && prof.name) || profileName(authUserId) || "",
     country: p.country || null,
     province: p.province || null,
     city: p.city || null,
@@ -1675,7 +1696,7 @@ ipSubmit.addEventListener("click", function () {
     note: noteInput.value.trim(),
     time: timeInput.value,
     capturedAt: new Date().toISOString(),
-    displayName: profileName(authUserId) || "",
+    displayName: (currentProfile() && currentProfile().name) || profileName(authUserId) || "",
     country: draftAdmin && draftAdmin.country,
     province: draftAdmin && draftAdmin.province,
     city: draftAdmin && draftAdmin.city,
@@ -1732,6 +1753,7 @@ function showErr(msg) {
 const authorBtn = document.getElementById("authorBtn");
 const loginModal = document.getElementById("loginModal");
 const authEmail = document.getElementById("authEmail");
+const guestSubmit = document.getElementById("guestSubmit");
 const loginErr = document.getElementById("loginErr");
 const loginSubmit = document.getElementById("loginSubmit");
 const loginCancel = document.getElementById("loginCancel");
@@ -1743,15 +1765,21 @@ const homeImport = document.getElementById("homeImport");
 const importFile = document.getElementById("importFile");
 const profileNameInput = document.getElementById("profileNameInput");
 const profileSave = document.getElementById("profileSave");
+const identityStatus = document.getElementById("identityStatus");
+const bindRow = document.getElementById("bindRow");
+const bindEmail = document.getElementById("bindEmail");
+const bindSubmit = document.getElementById("bindSubmit");
+const bindMsg = document.getElementById("bindMsg");
 
 let authUserId = null;        // 当前 Supabase 登录用户 id（未登录为 null）
 let currentUserEmail = null;  // 当前登录邮箱
+let currentProfileData = null; // public.profiles 行：{ id, display_name, is_guest }
 
 function isAuthed() { return !!authUserId; }
 
 function currentProfile() {
   if (!authUserId) return null;
-  const name = profileName(authUserId) || currentUserEmail || "我";
+  const name = (currentProfileData && currentProfileData.display_name) || profileName(authUserId) || currentUserEmail || "我";
   return { name: name, emoji: "🌗" };
 }
 
@@ -1763,13 +1791,69 @@ function isMine(p) {
 }
 
 function updateAuthorBtn() {
-  authorBtn.textContent = isAuthed() ? "我的主页" : "登录";
+  const prof = currentProfile();
+  authorBtn.textContent = isAuthed() ? (prof ? prof.name : "我的主页") : "登录";
   authorBtn.classList.toggle("on", isAuthed());
 }
 
-function applySession(session) {
+function randomGuestName() {
+  const n = Math.floor(1000 + Math.random() * 9000);
+  return "游客 " + n;
+}
+
+function isAnonymousUser(user) {
+  return !!(user && (user.is_anonymous || (!user.email && !currentUserEmail)));
+}
+
+async function ensureProfile(user) {
+  if (!supabaseClient || !user) return null;
+  try {
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) {
+      if (user.email && data.is_guest) {
+        const { data: updated, error: updateError } = await supabaseClient
+          .from("profiles")
+          .update({ is_guest: false })
+          .eq("id", user.id)
+          .select("*")
+          .single();
+        if (!updateError && updated) return updated;
+      }
+      if (data.display_name) saveProfileName(user.id, data.display_name);
+      return data;
+    }
+
+    const isGuest = isAnonymousUser(user);
+    const row = {
+      id: user.id,
+      display_name: isGuest ? randomGuestName() : (user.email || "我"),
+      is_guest: isGuest,
+    };
+    const { data: inserted, error: insertError } = await supabaseClient
+      .from("profiles")
+      .insert(row)
+      .select("*")
+      .single();
+    if (insertError) throw insertError;
+    saveProfileName(user.id, inserted.display_name || row.display_name);
+    return inserted;
+  } catch (e) {
+    const fallbackName = profileName(user.id) || (isAnonymousUser(user) ? randomGuestName() : (user.email || "我"));
+    saveProfileName(user.id, fallbackName);
+    return { id: user.id, display_name: fallbackName, is_guest: isAnonymousUser(user), localOnly: true };
+  }
+}
+
+async function applySession(session) {
+  const user = session && session.user;
   authUserId = (session && session.user) ? session.user.id : null;
   currentUserEmail = (session && session.user) ? (session.user.email || "") : null;
+  currentProfileData = user ? await ensureProfile(user) : null;
   updateAuthorBtn();
   if (map) renderRemoteMarkers();
   if (homeView.classList.contains("show")) renderHome();
@@ -1813,6 +1897,71 @@ async function sendMagicLink() {
   } finally {
     loginSubmit.disabled = false;
   }
+}
+
+async function continueAsGuest() {
+  if (!supabaseClient) { authErr("登录服务还没配置好。", false); return; }
+  guestSubmit.disabled = true;
+  authErr("正在创建游客身份…", true);
+  try {
+    const { data, error } = await supabaseClient.auth.signInAnonymously();
+    if (error) { authErr("游客登录失败：" + (error.message || "请稍后再试"), false); return; }
+    await applySession(data && data.session);
+    closeLogin();
+    openHome();
+  } catch (e) {
+    authErr("游客登录失败，请稍后再试。", false);
+  } finally {
+    guestSubmit.disabled = false;
+  }
+}
+
+async function bindCurrentGuestEmail() {
+  const email = bindEmail.value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showBindMsg("请填写有效邮箱。");
+    return;
+  }
+  if (!supabaseClient || !authUserId) return;
+  bindSubmit.disabled = true;
+  showBindMsg("正在发送绑定邮件…");
+  try {
+    const { error } = await supabaseClient.auth.updateUser(
+      { email },
+      { emailRedirectTo: authRedirectTo() }
+    );
+    if (error) {
+      showBindMsg("绑定失败：" + (error.message || "这个邮箱可能已被使用。"));
+      return;
+    }
+    showBindMsg("已发送确认邮件。点击邮件链接后，这个游客身份会绑定到该邮箱。");
+  } catch (e) {
+    showBindMsg("绑定失败，请稍后再试。");
+  } finally {
+    bindSubmit.disabled = false;
+  }
+}
+
+function showBindMsg(msg) {
+  bindMsg.textContent = msg || "";
+  bindMsg.classList.toggle("show", !!msg);
+}
+
+async function updateProfileName(name) {
+  if (!authUserId) return;
+  saveProfileName(authUserId, name);
+  currentProfileData = Object.assign({}, currentProfileData || {}, {
+    id: authUserId,
+    display_name: name,
+  });
+  if (!supabaseClient) return;
+  try {
+    const { error } = await supabaseClient
+      .from("profiles")
+      .update({ display_name: name })
+      .eq("id", authUserId);
+    if (error) throw error;
+  } catch (e) {}
 }
 
 function findPointById(id) {
@@ -1980,7 +2129,11 @@ function renderHome() {
   document.getElementById("homeAvatar").textContent = prof ? prof.emoji : "🌗";
   document.getElementById("homeName").textContent = prof ? prof.name : "我";
   document.getElementById("homeTag").textContent = "我的情绪日记 · 公共地图上匿名";
-  profileNameInput.value = authUserId ? profileName(authUserId) : "";
+  const isGuest = !!(currentProfileData && currentProfileData.is_guest);
+  identityStatus.textContent = authUserId ? ("当前身份：" + (isGuest ? "游客" : "邮箱用户")) : "当前身份：未登录";
+  profileNameInput.value = authUserId ? ((currentProfileData && currentProfileData.display_name) || profileName(authUserId)) : "";
+  bindRow.classList.toggle("show", isGuest);
+  if (!isGuest) showBindMsg("");
 
   // 只看「我」的每一笔（本地点 + 云端属于我的点，最新的在前，无日期的排最后）
   const pts = savedPoints.concat(remotePoints.filter(isMine)).slice().sort((a, b) => {
@@ -2147,6 +2300,7 @@ document.getElementById("demoToggle").addEventListener("click", () => {
   setDemoHidden(!demoHidden);
 });
 loginSubmit.addEventListener("click", sendMagicLink);
+guestSubmit.addEventListener("click", continueAsGuest);
 loginCancel.addEventListener("click", closeLogin);
 authEmail.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMagicLink(); });
 loginModal.addEventListener("click", (e) => { if (e.target === loginModal) closeLogin(); });
@@ -2155,10 +2309,10 @@ homeClose.addEventListener("click", closeHome);
 homeExport.addEventListener("click", exportPoints);
 homeImport.addEventListener("click", () => importFile.click());
 importFile.addEventListener("change", () => importPointsFile(importFile.files && importFile.files[0]));
-profileSave.addEventListener("click", () => {
+profileSave.addEventListener("click", async () => {
   if (!authUserId) return;
   const name = profileNameInput.value.trim().slice(0, 20);
-  saveProfileName(authUserId, name);
+  await updateProfileName(name);
   savedPoints.forEach(p => { p.displayName = name; });
   saveAll();
   remotePoints.filter(isMine).forEach(p => {
@@ -2174,9 +2328,13 @@ profileSave.addEventListener("click", () => {
 profileNameInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") profileSave.click();
 });
+bindSubmit.addEventListener("click", bindCurrentGuestEmail);
+bindEmail.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") bindCurrentGuestEmail();
+});
 homeLogout.addEventListener("click", async () => {
   if (supabaseClient) await supabaseClient.auth.signOut();
-  applySession(null);
+  await applySession(null);
   if (map) renderSavedMarkers();
   closeHome();
 });
@@ -2186,11 +2344,11 @@ document.addEventListener("keydown", (e) => {
 
 // 恢复会话（含魔法链接跳转回来后的 token 解析）+ 监听登录状态变化
 if (supabaseClient) {
-  supabaseClient.auth.getSession().then(({ data, error }) => {
-    if (!error) applySession(data && data.session);
+  supabaseClient.auth.getSession().then(async ({ data, error }) => {
+    if (!error) await applySession(data && data.session);
   }).catch(() => {});
-  supabaseClient.auth.onAuthStateChange((event, session) => {
-    applySession(session);
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    await applySession(session);
     if (event === "SIGNED_IN") closeLogin();
     if (event === "SIGNED_OUT") closeHome();
   });
