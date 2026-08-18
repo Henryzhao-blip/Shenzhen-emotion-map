@@ -757,6 +757,7 @@ function saveDemoHidden(v) {
 }
 
 let savedPoints = loadSaved();
+let remotePoints = [];
 let demoHidden = loadDemoHidden();
 
 /* ============================================================
@@ -805,6 +806,7 @@ if (!AMAP_KEY) {
 let map;
 let savedMarkers = [];
 let seedMarkers = [];
+let remoteMarkers = [];
 let draftMarker = null, draftPos = null;
 let editingId = null;
 let picking = false;
@@ -865,7 +867,9 @@ function hideTip() {
 }
 
 function updateCounter() {
-  document.getElementById("count").textContent = savedPoints.length + (demoHidden ? 0 : SEED_POINTS.length);
+  const localIds = new Set(savedPoints.map(p => p.id).filter(Boolean));
+  const remoteCount = remotePoints.filter(p => !localIds.has(p.id)).length;
+  document.getElementById("count").textContent = savedPoints.length + remoteCount + (demoHidden ? 0 : SEED_POINTS.length);
 }
 
 function updateDemoToggle() {
@@ -883,8 +887,16 @@ function renderSavedMarkers() {
   savedMarkers = savedPoints.map(p => renderPoint(p));
 }
 
+function renderRemoteMarkers() {
+  const localIds = new Set(savedPoints.map(p => p.id).filter(Boolean));
+  remoteMarkers.forEach(m => m.setMap(null));
+  remoteMarkers = remotePoints
+    .filter(p => !localIds.has(p.id))
+    .map(p => renderPoint(Object.assign({}, p, { remote: true })));
+}
+
 function visibleMarkers() {
-  return seedMarkers.concat(savedMarkers).filter(Boolean);
+  return seedMarkers.concat(remoteMarkers, savedMarkers).filter(Boolean);
 }
 
 function setDemoHidden(hidden) {
@@ -913,6 +925,7 @@ function init() {
   renderSavedMarkers();
   const markers = visibleMarkers();
   if (markers.length) map.setFitView(markers, false, [70, 70, 70, 70]);
+  loadRemotePoints();
   map.on("click", function (e) {
     if (picking) {
       setPicking(false);
@@ -1395,6 +1408,43 @@ function closePanel() {
   draftPos = null;
 }
 
+function pointForBackend(p) {
+  return {
+    lng: p.lng,
+    lat: p.lat,
+    name: p.name || "",
+    scene: p.scene || "不指定",
+    emotion: p.emotion || "",
+    emotion2: p.emotion2 || "",
+    color: p.color || "",
+    color2: p.color2 || "",
+    note: p.note || "",
+    time: p.time || "",
+  };
+}
+
+async function loadRemotePoints() {
+  try {
+    const res = await fetch("/.netlify/functions/points");
+    if (!res.ok) return;
+    const data = await res.json();
+    remotePoints = Array.isArray(data.points) ? data.points : [];
+    if (map) renderRemoteMarkers();
+    updateCounter();
+  } catch (e) {}
+}
+
+async function syncPointToBackend(p) {
+  try {
+    const res = await fetch("/.netlify/functions/points", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(pointForBackend(p)),
+    });
+    if (res.ok) loadRemotePoints();
+  } catch (e) {}
+}
+
 emotionInput.addEventListener("input", updateEmotionPreview);
 emotionInput2.addEventListener("input", updateEmotionPreview);
 
@@ -1459,8 +1509,10 @@ ipSubmit.addEventListener("click", function () {
     const p = Object.assign({ id: "s" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) }, data);
     savedPoints.push(p);
     savedMarkers.push(renderPoint(p));
+    syncPointToBackend(p);
   }
   saveAll();
+  renderRemoteMarkers();
   updateCounter();
   closePanel();
 });
@@ -1518,7 +1570,7 @@ function currentProfile() {
 }
 function isAuthed() { return !!currentProfile(); }
 function isMine(p) {
-  if (!p || !p.id) return false;
+  if (!p || !p.id || p.remote) return false;
   return !p.owner || p.owner === currentUser();
 }
 
