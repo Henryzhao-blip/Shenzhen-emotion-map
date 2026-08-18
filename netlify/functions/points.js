@@ -17,7 +17,7 @@ function normalizePoint(raw) {
   if (lng == null || lat == null) return null;
   if (lng < 113.4 || lng > 115.2 || lat < 21.8 || lat > 23.2) return null;
   return {
-    id: 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    id: cleanText(raw.id, 80) || ('p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)),
     lng,
     lat,
     name: cleanText(raw.name, 160),
