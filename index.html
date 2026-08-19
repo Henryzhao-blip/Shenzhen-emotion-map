@@ -95,14 +95,57 @@
   #secWarn {
     display: none; margin-top: 6px; font-size: 11.5px; color: #ffd479; line-height: 1.5;
   }
-  /* 高德自动补全下拉，暗色化 */
-  .amap-sug, .amap-sug * { box-sizing: border-box; }
-  .amap-sug {
-    background: #10161f !important; border: 1px solid var(--line) !important;
-    border-radius: 12px !important; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.5) !important;
+  /* 地点搜索候选：不用高德原生白框，改由前端自己渲染 */
+  .amap-sug, .amap-sug-result { display: none !important; }
+  .place-suggest {
+    display: none;
+    position: absolute;
+    left: 0; right: 0; top: calc(100% + 8px);
+    z-index: 90;
+    max-height: 310px;
+    overflow-y: auto;
+    padding: 6px;
+    background: rgba(16, 22, 32, 0.98);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px;
+    box-shadow: 0 18px 54px rgba(0,0,0,0.62);
+    backdrop-filter: blur(16px);
   }
-  .amap-sug li { color: var(--text) !important; background: transparent !important; }
-  .amap-sug li:hover, .amap-sug li.active { background: rgba(255,255,255,0.08) !important; }
+  .place-suggest.show { display: block; }
+  .place-suggest button {
+    width: 100%;
+    min-height: 42px;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .place-suggest button:hover,
+  .place-suggest button:focus {
+    outline: none;
+    background: rgba(34,211,238,0.14);
+  }
+  .place-suggest .ps-name {
+    font-size: 13.5px;
+    line-height: 1.25;
+    color: #f8fbff;
+  }
+  .place-suggest .ps-meta {
+    font-size: 11.5px;
+    line-height: 1.25;
+    color: var(--dim);
+  }
+  .place-field { position: relative; }
+  .panel-place-suggest {
+    top: 72px;
+    z-index: 95;
+  }
 
   /* ---------- 底部栏 ---------- */
   #bottombar {
@@ -189,6 +232,12 @@
     flex: 0 0 auto; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
     background: rgba(255,255,255,0.06); color: var(--accent); cursor: pointer; font-size: 12.5px;
     white-space: nowrap;
+  }
+  .mini-btn.strong {
+    background: rgba(34,211,238,0.16);
+    border-color: rgba(34,211,238,0.28);
+    color: var(--text);
+    font-weight: 600;
   }
   .mini-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
   .mini-btn:disabled { opacity: .55; cursor: wait; }
@@ -398,6 +447,7 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
       </button>
     </div>
+    <div id="topSuggest" class="place-suggest"></div>
     <div id="secWarn">⚠️ 地点搜索需要高德的「安全密钥」（securityJsCode）。请在高德控制台配置后，填进代码顶部 <code>AMAP_SECURITY</code>。</div>
   </div>
 </div>
@@ -419,12 +469,14 @@
     <label>场景类型（可选）</label>
     <select id="sceneSelect"><option value="">不指定</option></select>
   </div>
-  <div class="ip-field">
+  <div class="ip-field place-field">
     <label>地点</label>
     <div class="field-row">
-      <input id="nameInput" placeholder="例如：上海外滩" />
+      <input id="nameInput" placeholder="例如：上海外滩" autocomplete="off" />
+      <button id="panelSearchBtn" class="mini-btn strong" type="button">搜索</button>
       <button id="geoBtn" class="mini-btn" type="button">当前位置</button>
     </div>
+    <div id="panelSuggest" class="place-suggest panel-place-suggest"></div>
   </div>
   <div class="ip-field">
     <label>此刻的心情 <span class="em-hint">（想写什么写什么，再选个颜色）</span></label>
@@ -912,10 +964,34 @@ function init() {
 }
 
 /* ============================================================
- * 地点输入提示（高德 AutoComplete）
- * 顶部搜索框 + 输入面板的地点框都接上：打字即出联想下拉，点选即落点。
+ * 地点输入提示
+ * 顶部搜索框 + 输入面板的地点框都用 PlaceSearch 取数据，再由前端渲染暗色候选层。
  * ============================================================ */
-let autoTop = null, autoPanel = null;
+let topPlaceSearch = null, panelPlaceSearch = null;
+let topSuggestTimer = null, panelSuggestTimer = null;
+
+function applyPoiToDraft(poi, openInputPanel) {
+  const loc = locOf(poi);
+  if (!loc) return false;
+  const name = poi.name || "";
+  if (openInputPanel) {
+    document.getElementById("searchInput").value = name;
+    placeDraft(loc.lng, loc.lat, name, adminFromPoi(poi));
+  } else {
+    nameInput.value = name;
+    placeDraftMarker(loc.lng, loc.lat);
+    draftAdmin = adminFromPoi(poi);
+    map.setCenter([loc.lng, loc.lat]);
+    map.setZoom(16);
+    reverseGeocode(loc.lng, loc.lat, function (resolvedName, resolvedAdmin) {
+      draftAdmin = resolvedAdmin || draftAdmin;
+      if (resolvedName && !nameInput.value.trim()) nameInput.value = resolvedName;
+    });
+  }
+  ipError.style.display = "none";
+  hidePlaceSuggest(openInputPanel ? topSuggest : panelSuggest);
+  return true;
+}
 
 function setupSearch() {
   if (!AMAP_SECURITY) {
@@ -923,34 +999,91 @@ function setupSearch() {
     return;
   }
 
-  AMap.plugin("AMap.AutoComplete", function () {
-    // 顶部搜索框：联想 → 落点并打开面板
-    autoTop = new AMap.AutoComplete({ input: "searchInput" });
-    autoTop.on("select", function (e) {
-      const poi = e.poi;
-      const loc = locOf(poi);
-      if (!loc) return;
-      const name = poi.name || "";
-      document.getElementById("searchInput").value = name;
-      placeDraft(loc.lng, loc.lat, name, adminFromPoi(poi));
+  AMap.plugin("AMap.PlaceSearch", function () {
+    topPlaceSearch = new AMap.PlaceSearch({
+      pageSize: 8,
+      pageIndex: 1,
     });
-
-    // 输入面板地点框：联想 → 改地点 + 移动青点 + 更新省市区
-    autoPanel = new AMap.AutoComplete({ input: "nameInput" });
-    autoPanel.on("select", function (e) {
-      const poi = e.poi;
-      const loc = locOf(poi);
-      if (!loc) return;
-      nameInput.value = poi.name || "";
-      placeDraftMarker(loc.lng, loc.lat);
-      draftAdmin = adminFromPoi(poi);
-      map.setCenter([loc.lng, loc.lat]);
-      map.setZoom(16);
-      reverseGeocode(loc.lng, loc.lat, function (resolvedName, resolvedAdmin) {
-        draftAdmin = resolvedAdmin || draftAdmin;
-      });
+    panelPlaceSearch = new AMap.PlaceSearch({
+      pageSize: 8,
+      pageIndex: 1,
     });
   });
+}
+
+function placeMeta(poi) {
+  return [poi.pname, poi.cityname, poi.adname, poi.address]
+    .map(cleanAdminValue)
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function hidePlaceSuggest(box) {
+  if (!box) return;
+  box.classList.remove("show");
+  box.innerHTML = "";
+}
+
+function renderPlaceSuggest(box, pois, openInputPanel) {
+  if (!box || !Array.isArray(pois) || !pois.length) {
+    hidePlaceSuggest(box);
+    return;
+  }
+  box.innerHTML = "";
+  pois.slice(0, 8).forEach(function (poi) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.innerHTML =
+      '<span class="ps-name">' + escapeHtml(poi.name || "未命名地点") + '</span>' +
+      '<span class="ps-meta">' + escapeHtml(placeMeta(poi) || "点击选择这个地点") + '</span>';
+    btn.addEventListener("mousedown", function (e) {
+      e.preventDefault();
+      applyPoiToDraft(poi, openInputPanel);
+    });
+    box.appendChild(btn);
+  });
+  box.classList.add("show");
+}
+
+function searchPlaces(keyword, searcher, box, openInputPanel, showEmptyError) {
+  if (!keyword) {
+    hidePlaceSuggest(box);
+    return;
+  }
+  if (!searcher) {
+    if (showEmptyError) showErr("地点搜索还没准备好，请稍等一下再试。");
+    return;
+  }
+  searcher.search(keyword, function (status, result) {
+    const list = result && result.poiList && result.poiList.pois;
+    const pois = Array.isArray(list) ? list.filter(locOf) : [];
+    if (status === "complete" && pois.length) {
+      renderPlaceSuggest(box, pois, openInputPanel);
+      if (showEmptyError && pois[0]) applyPoiToDraft(pois[0], openInputPanel);
+      return;
+    }
+    hidePlaceSuggest(box);
+    if (showEmptyError) showErr("没有找到这个地点，可以换个更具体的名字。");
+  });
+}
+
+function queuePlaceSuggest(input, searcher, box, openInputPanel) {
+  const timerName = openInputPanel ? "topSuggestTimer" : "panelSuggestTimer";
+  clearTimeout(openInputPanel ? topSuggestTimer : panelSuggestTimer);
+  const nextTimer = setTimeout(function () {
+    searchPlaces(input.value.trim(), searcher, box, openInputPanel, false);
+  }, 220);
+  if (timerName === "topSuggestTimer") topSuggestTimer = nextTimer;
+  else panelSuggestTimer = nextTimer;
+}
+
+function searchPanelPlace() {
+  const keyword = nameInput.value.trim();
+  if (!keyword) {
+    showErr("请输入要搜索的地点");
+    return;
+  }
+  searchPlaces(keyword, panelPlaceSearch, panelSuggest, false, true);
 }
 
 function escapeHtml(s) {
@@ -1082,7 +1215,11 @@ function adminFromRegeocode(re) {
  * 输入面板
  * ============================================================ */
 const panel = document.getElementById("inputPanel");
+const searchInput = document.getElementById("searchInput");
+const topSuggest = document.getElementById("topSuggest");
 const nameInput = document.getElementById("nameInput");
+const panelSearchBtn = document.getElementById("panelSearchBtn");
+const panelSuggest = document.getElementById("panelSuggest");
 const emotionInput = document.getElementById("emotionInput");
 const emotionColor = document.getElementById("emotionColor");
 
@@ -1284,6 +1421,7 @@ document.addEventListener("keydown", (e) => {
 
 function openPanel(name) {
   setPicking(false);
+  hidePlaceSuggest(panelSuggest);
   editingId = null;
   ipTitle.textContent = "记一笔";
   ipDelete.style.display = "none";
@@ -1300,6 +1438,7 @@ function openPanel(name) {
 function openEditPanel(p) {
   if (!isMine(p)) return;
   setPicking(false);
+  hidePlaceSuggest(panelSuggest);
   editingId = p.id;
   ipTitle.textContent = "编辑这笔";
   ipDelete.style.display = "";
@@ -1328,6 +1467,7 @@ function openEditPanel(p) {
 
 function closePanel() {
   panel.classList.remove("show");
+  hidePlaceSuggest(panelSuggest);
   if (draftMarker) { draftMarker.setMap(null); draftMarker = null; }
   draftPos = null;
   draftAdmin = null;
@@ -1459,7 +1599,37 @@ function useBrowserLocation() {
   focusBrowserLocation(true);
 }
 
+searchInput.addEventListener("input", function () {
+  queuePlaceSuggest(searchInput, topPlaceSearch, topSuggest, true);
+});
+searchInput.addEventListener("focus", function () {
+  if (searchInput.value.trim()) queuePlaceSuggest(searchInput, topPlaceSearch, topSuggest, true);
+});
+searchInput.addEventListener("keydown", function (e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    searchPlaces(searchInput.value.trim(), topPlaceSearch, topSuggest, true, true);
+  }
+});
+nameInput.addEventListener("input", function () {
+  queuePlaceSuggest(nameInput, panelPlaceSearch, panelSuggest, false);
+});
+nameInput.addEventListener("focus", function () {
+  if (nameInput.value.trim()) queuePlaceSuggest(nameInput, panelPlaceSearch, panelSuggest, false);
+});
+panelSearchBtn.addEventListener("click", searchPanelPlace);
+nameInput.addEventListener("keydown", function (e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    searchPanelPlace();
+  }
+});
 geoBtn.addEventListener("click", useBrowserLocation);
+
+document.addEventListener("mousedown", function (e) {
+  if (!document.getElementById("searchWrap").contains(e.target)) hidePlaceSuggest(topSuggest);
+  if (!panelSuggest.contains(e.target) && e.target !== nameInput) hidePlaceSuggest(panelSuggest);
+});
 
 document.getElementById("ipClose").addEventListener("click", closePanel);
 document.getElementById("ipCancel").addEventListener("click", closePanel);

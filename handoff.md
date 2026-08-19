@@ -45,7 +45,7 @@
 ### 4.1 地图底座
 
 - 高德 JS API 2.0，自定义底图样式 `amap://styles/174409434e65a311734f7a5bc2ff4bfd`；默认全国视图（中心 `[104.1954, 35.8617]`、zoom 4）。
-- **地点输入联想**：`AMap.AutoComplete`（插件名是 2.0 的 `AMap.AutoComplete`，不是 1.x 的 `AMap.Autocomplete`）。顶部搜索框 `#searchInput` 和输入面板的地点框 `#nameInput` 都各接了一个实例（`autoTop` / `autoPanel`，在 `setupSearch()` 里创建）：打字即弹出高德联想下拉（`.amap-sug` 已暗色化），点选即落点/移动 draft marker，并通过 `adminFromPoi()` + `reverseGeocode()` 兜底回填省/市/区。旧的 `AMap.PlaceSearch` + 自定义 `#results` 列表已删除。
+- **地点搜索候选**：不再绑定高德原生 `AutoComplete({ input })`，避免它生成不可控的白色 `.amap-sug` 下拉。现在 `setupSearch()` 只创建两个 `AMap.PlaceSearch` 实例（顶部 `topPlaceSearch`、面板 `panelPlaceSearch`），输入时取 POI 数据，再由前端自绘暗色候选层 `#topSuggest` / `#panelSuggest`。顶部搜索框 `#searchInput` 和输入面板地点框 `#nameInput` 都支持打字候选；输入面板另有 `#panelSearchBtn` 和回车搜索，编辑已有点时也能重新搜索地点并改变坐标。旧的自定义 `#results` 列表已删除。
 - **地图点选**：点击地图落点，`AMap.Geocoder.getAddress()` 逆地理编码自动填地点名，并提取省/市/区。
 - **当前位置**：输入面板的地点旁有 `#geoBtn`「当前位置」，调用 `navigator.geolocation`；授权后自动落点并反查地点名。
 - 点位可拖动：我的本地点可以直接拖动，编辑面板里的青色 draft marker 也可拖动。
