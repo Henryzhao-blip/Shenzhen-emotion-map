@@ -143,7 +143,7 @@
    git push
    ```
 2. GitHub push 后 Netlify 自动部署。
-3. 高德控制台必须把 Netlify 域名加入 key 的域名白名单，否则地图/搜索可能失败。
+3. 高德 key 的域名白名单：**本地调试**（`localhost` / `file://`）时需把白名单**清空**，否则地图/搜索不显示（控制台会报 `USERKEY_PLAT_NOMATCH` 之类）；**上线 Netlify 后应把 Netlify 域名加回白名单**，防止他人盗用 key 配额。当前（2026-08-19）白名单为临时清空状态，方便本地联调。若地图瓦片空白，可临时把 `index.html` 里 `mapStyle` 换回内置 `amap://styles/dark` 排查是否为自定义样式 `amap://styles/174409434e65a311734f7a5bc2ff4bfd` 的问题。
 4. Supabase 建库：打开 Supabase SQL Editor，运行 `supabase/schema.sql`（建表 + RLS + 授权）。
 5. 填 `index.html` 顶部 `PUBLIC_DB_URL` + `PUBLIC_DB_KEY`（public key，不是 `service_role`）。
 6. Supabase Auth 配置：启用 Email（Magic Link）；把 Site URL 和 Redirect URLs 设成 Netlify 域名。
