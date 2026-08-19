@@ -1,6 +1,6 @@
 # Emotion Map — 交接文档（Handoff）
 
-> 更新于 2026-08-18。目的：让一个没有上下文的新对话，读完这份就能接着干。
+> 更新于 2026-08-19。目的：让一个没有上下文的新对话，读完这份就能接着干。
 > 当前项目目录：`/Users/ziheng/Desktop/公众号文章/emotion map`
 > GitHub：`https://github.com/Henryzhao-blip/Shenzhen-emotion-map`
 > Netlify：已连接 GitHub，推送 `main` 后自动部署。
@@ -44,33 +44,36 @@
 
 ### 4.1 地图底座
 
-- 高德 JS API 2.0，暗色主题 `amap://styles/dark`。
+- 高德 JS API 2.0，暗色主题 `amap://styles/dark`；默认全国视图（中心 `[104.1954, 35.8617]`、zoom 4）。
 - **地点搜索**：`AMap.PlaceSearch`，全国范围，自定义结果列表。
 - **地图点选**：点击地图落点，`AMap.Geocoder.getAddress()` 逆地理编码自动填地点名，并提取省/市/区。
 - **当前位置**：输入面板的地点旁有 `#geoBtn`「当前位置」，调用 `navigator.geolocation`；授权后自动落点并反查地点名。
 - 点位可拖动：我的本地点可以直接拖动，编辑面板里的青色 draft marker 也可拖动。
+- 悬浮提示：鼠标悬停显示该点的展示昵称（`display_name`，缺省为「匿名」）与年月。
 - 公共演示数据 `SEED_POINTS` 已清空；当前首页只显示真实用户/历史数据库点。
 
 ### 4.2 输入面板
 
-- 字段：场景类型、地点、主情绪、副情绪、一句话、日期。
+- 字段：场景类型、地点、此刻的心情（自由文本）、一句话、日期。
+- 场景类型为全国通用中层分类（7 组：交通出行 / 居住日常 / 工作学习 / 消费休闲 / 自然户外 / 公共空间 / 其他），定义在 `SCENE_GROUPS`。
 - 新建记录时日期默认今天；用户仍可打开自定义暗色日历修改。
-- 主情绪 `#emotionInput` 生成中心颜色，副情绪 `#emotionInput2` 生成外圈光芒颜色。
-- `#emSwatch` 实时预览主/副颜色。
+- 心情是自由文本（想写什么写什么，如「想下班」「刚分手」），旁边一个原生取色器 `#emotionColor`（`<input type="color">`）让用户选一个代表此刻的颜色。
+- 一个点只存一个颜色，不再有「主情绪 + 副情绪」双色结构。
 - 保存新点时仍写入 localStorage 作为本地备份，同时同步到 Supabase。
 
-### 4.3 情绪颜色引擎
+### 4.3 颜色引擎
 
-- 纯前端词典规则，不是真 AI，不联网分析文本。
-- 二维情绪模型：效价 valence（-1 到 +1）× 唤醒 arousal（0 到 1）→ HSL 颜色。
-- 程度词调节：`非常/超级/太…` arousal +0.3；`有点/稍微…` arousal -0.3。
-- 否定词翻转效价 ×0.65：`不快乐`→蓝、`不焦虑`→橙。
-- 旧数据兜底：`colorOf(p)` / `emotionText(p)` 仍支持旧 `dir/from/to` 数据。
+- 颜色不再由词典分析文本生成，而是用户直接用原生取色器自选（一个点 = 一个 hex 颜色）。
+- 情绪规律从颜色推断冷暖：`warmthOf(hex)` 把 hex 转成冷暖度 w（-1 冷 ~ +1 暖，橙≈+1、蓝≈-1），基于 hue 的余弦映射（峰值 35°）。
+- `warmthPhrase(w)` 把冷暖度翻译成口语化心情文案（暖色=轻快、冷色=低落）。
+- `avgWarmth(arr)` / `avgColor(arr)`：一组点的平均冷暖度 / 平均颜色（RGB 平均），用于个人主页规律。
+- 旧数据兜底：`colorOf(p)` / `emotionText(p)` 仍支持旧 `dir/from/to` 数据；数据库里的 `emotion2`/`color2` 列保留但前端不再读写。
 
 ### 4.4 登录 + 个人主页（Supabase Auth · 邮箱免密）
 
 - 顶部按钮：`#authorBtn`，未登录显示「登录」，登录后显示「我的主页」。
 - 邮箱免密：`#authEmail` 输入邮箱 → `supabase.auth.signInWithOtp` 发登录链接 → 用户点击邮件里的链接 → `getSession()` 恢复会话。
+- 登录回跳地址由顶部常量 `PUBLIC_SITE_URL` 指定；`authRedirectTo()` 在本地调试时也回跳到线上域名，避免本地收不到回跳。
 - 游客入口：`supabase.auth.signInAnonymously()` 创建真实匿名用户；个人主页可绑定邮箱，使用 `auth.updateUser({ email })` 尽量保留同一个 `auth.users.id`。
 - 个人 profile：`public.profiles` 保存 `display_name` / `is_guest`，游客默认生成「游客 1234」格式展示名。
 - 没有密码、没有注册/登录切换、没有本地模拟账号；旧的 `AUTHOR_USER / AUTHOR_PASS / sz2026` 已删除。
@@ -79,19 +82,20 @@
 - 我的点可编辑、删除、拖动；他人（含未登录）的点只读。
 - 个人主页展示：情绪总数、覆盖场景、常见季节、时间跨度、情绪洞察、情绪光谱、我的每一笔。
 - 「我的每一笔」= 本地备份点 + 云端属于我的点（`remotePoints.filter(isMine)`），支持跨设备编辑。
-- 洞察包括：地点/场景规律、季节规律、月份规律、工作日/周末规律、复杂矛盾情绪。
+- 洞察包括：地点/场景规律、季节规律、月份规律、工作日/周末规律（「冷暖」从颜色推断）。
 - 个人主页右上角有「导出 / 导入」JSON，方便迁移 localStorage 点。
 
 ### 4.5 数据库（Supabase 直连 + RLS）
 
 - 前端直接连 Supabase，不再走 Netlify Function。
-- 表：`public.emotion_points`，建表 SQL 在 `supabase/schema.sql`。
+- 表：`public.emotion_points`（情绪点）+ `public.profiles`（昵称 / 是否游客），建表 SQL 在 `supabase/schema.sql`。
 - 客户端：`window.supabase.createClient(PUBLIC_DB_URL, PUBLIC_DB_KEY)`（supabase-js v2，CDN 加载）。
 - 配置常量在 `index.html` 顶部：`PUBLIC_DB_URL`、`PUBLIC_DB_KEY`。
 - `PUBLIC_DB_KEY` 可暴露在浏览器；**切勿**填 `service_role` key。
 - RLS 四策略：select 公开（anon/authenticated 都可读）；insert/update/delete 仅 `authenticated` 且 `auth.uid() = user_id`。
 - 数据读写：`.from('emotion_points')` 的 select / insert / update / delete。
 - 坐标降精度：数据库列 `numeric(9,3)/numeric(8,3)` 自动四舍五入到 3 位小数（约街区/百米级）。
+- `emotion_points` 另存 `display_name`（展示昵称）与 `country/province/city/district`（省/市/区，来自高德逆地理编码）。
 - Supabase 没配好（或没登录）时前端静默回退本地模式：点仍存 localStorage，只是不跨设备同步。
 
 ---
@@ -114,8 +118,9 @@
 
 ## 6. 技术实现要点
 
-- 数据模型（前端点）：`{ id, lng, lat, name, scene, emotion, emotion2, color, color2, note, time, capturedAt, user_id }`。
-  - `time` ↔ 数据库 `emotion_date`；`capturedAt` ↔ `captured_at`。
+- 数据模型（前端点）：`{ id, lng, lat, name, scene, emotion, color, note, time, capturedAt, displayName, country, province, city, district, user_id }`。
+  - `time` ↔ 数据库 `emotion_date`；`capturedAt` ↔ `captured_at`；`displayName` ↔ `display_name`。
+  - 旧列 `emotion2`/`color2` 仍存在于数据库（向后兼容），但前端已不再读写。
 - `pointRow(p)`：前端点 → Supabase 行（含 `user_id = authUserId`）。
 - `toClientPoint(row)`：Supabase 行 → 前端点（`lng/lat` 转 Number）。
 - `isMine(p)`：`p.remote` 时 = 已登录且 `p.user_id === authUserId`；本地点 = 恒 true（本浏览器自己的备份）。
@@ -141,13 +146,16 @@
 4. Supabase 建库：打开 Supabase SQL Editor，运行 `supabase/schema.sql`（建表 + RLS + 授权）。
 5. 填 `index.html` 顶部 `PUBLIC_DB_URL` + `PUBLIC_DB_KEY`（public key，不是 `service_role`）。
 6. Supabase Auth 配置：启用 Email（Magic Link）；把 Site URL 和 Redirect URLs 设成 Netlify 域名。
-7. 收不到登录邮件时：确认邮箱没进垃圾箱、Supabase 的 Email 模板/发送限额正常。
+7. 填 `index.html` 顶部 `PUBLIC_SITE_URL`（邮箱登录回跳地址，设为 Netlify 域名）；本地开发时回跳也指向它。
+8. `netlify.toml` 已配 `SECRETS_SCAN_OMIT_KEYS`，避免 Netlify 把 `PUBLIC_DB_URL/PUBLIC_DB_KEY` 当 secret 拦掉。
+9. 收不到登录邮件时：确认邮箱没进垃圾箱、Supabase 的 Email 模板/发送限额正常。
 
 ---
 
 ## 8. 仍未解决 / 后续方向
 
 - 数据审核/反垃圾还没有做。
-- 情绪分析仍是词典规则，不是真 AI；如果未来接 AI，需要认真处理匿名和隐私边界。
+- 情绪不再做文本分析，改由用户自选颜色；冷暖规律是颜色 hue 的粗略推断，不是真 AI。
+- 如果未来接 AI（分析自由文本），需要认真处理匿名和隐私边界。
 - 文案仍可继续打磨：共鸣/空城 slogan、时刻氛围场景归属、人群枚举如何收敛到情绪轴。
 - 未来若加「仅本人可访问的精确位置」（用于个人记忆），需另加独立列 + 列级 RLS（见 `schema.sql` 顶部注释）。

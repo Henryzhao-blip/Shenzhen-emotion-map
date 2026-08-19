@@ -45,9 +45,6 @@
   }
   .dot.active .core { animation: blink 1s ease-in-out infinite; }
   @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
-  /* 双色情绪点：主情绪在中心，副情绪在外圈 */
-  .dot.dual .core { box-shadow: 0 0 12px var(--c), 0 0 24px var(--c2), 0 0 42px var(--c2); }
-  .dot.dual::before { border: 2px solid var(--c2); box-shadow: 0 0 12px var(--c2), 0 0 28px var(--c2); }
 
   /* ---------- 落点 pin（可拖动） ---------- */
   .draft { width: 20px; height: 20px; position: relative; cursor: grab; }
@@ -185,19 +182,18 @@
   }
   .ip-field input:focus, .ip-field select:focus, .ip-field textarea:focus { border-color: rgba(34,211,238,0.5); }
   .ip-field select option { background: #10161f; color: var(--text); }
-  /* ---------- 情绪输入 + 实时颜色 ---------- */
+  /* ---------- 情绪输入 + 取色器 ---------- */
   .em-hint { opacity: .75; font-size: 11px; }
   .em-row { display: flex; align-items: center; gap: 10px; }
-  .em-inputs { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-  .em-inputs input { width: 100%; }
-  .em-swatch {
-    flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%;
-    background: var(--c, #8a93a3);
-    box-shadow: 0 0 16px var(--c, #8a93a3), 0 0 5px var(--c, #8a93a3);
-    transition: background .2s ease, box-shadow .2s ease;
+  .em-row #emotionInput { flex: 1; min-width: 0; }
+  .em-color {
+    flex: 0 0 auto; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line);
+    border-radius: 50%; background: transparent; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
   }
-  .em-swatch.dual { box-shadow: 0 0 18px var(--c2), 0 0 34px var(--c2), 0 0 0 3px var(--c2); }
-  .em-label { margin-top: 7px; font-size: 12px; color: var(--dim); }
+  .em-color::-webkit-color-swatch-wrapper { padding: 0; }
+  .em-color::-webkit-color-swatch { border: none; border-radius: 50%; }
+  .em-color::-moz-color-swatch { border: none; border-radius: 50%; }
   /* ---------- 日期字段 + 自定义日历 ---------- */
   .date-field {
     width: 100%; padding: 12px 14px; border-radius: 10px; font-size: 15px; cursor: pointer;
@@ -255,7 +251,6 @@
   }
   .dp-foot button:hover { color: var(--text); background: rgba(255,255,255,0.06); }
   .t-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); margin-right: 8px; vertical-align: middle; }
-  .t-dot.dual, .hd.dual, .in-dot.dual { box-shadow: 0 0 0 2px var(--c2), 0 0 8px var(--c); }
   #ipError { display: none; color: #ff8a8a; font-size: 12.5px; margin-bottom: 12px; }
   .ip-actions { display: flex; gap: 10px; }
   .ip-actions button { flex: 1; padding: 12px; border-radius: 10px; font-size: 14px; cursor: pointer; }
@@ -451,15 +446,11 @@
     </div>
   </div>
   <div class="ip-field">
-    <label>情绪 <span class="em-hint">（主情绪决定中心色，副情绪决定外圈光）</span></label>
+    <label>此刻的心情 <span class="em-hint">（想写什么写什么，再选个颜色）</span></label>
     <div class="em-row">
-      <div class="em-inputs">
-        <input id="emotionInput" placeholder="主情绪：例如 有点开心 / 焦虑" autocomplete="off" />
-        <input id="emotionInput2" placeholder="副情绪（可选）：例如 难过 / 期待" autocomplete="off" />
-      </div>
-      <div class="em-swatch" id="emSwatch"></div>
+      <input id="emotionInput" placeholder="例如：想下班 / 刚分手 / 今天也蛮好的" autocomplete="off" />
+      <input type="color" id="emotionColor" class="em-color" value="#F2B84B" title="选一个代表此刻的颜色" />
     </div>
-    <div class="em-label" id="emLabel"></div>
   </div>
   <div class="ip-field">
     <label>一句话（可选）</label>
@@ -596,114 +587,80 @@ const DIR = {
 };
 
 /* ============================================================
- * 情绪 → 颜色（纯前端词典分析）
- * 二维情绪模型：效价 valence（-1 消极 ~ +1 积极）× 唤醒 arousal（0 平静 ~ 1 强烈）
- * 颜色用 HSL：正效价偏橙/红，负效价偏蓝/紫，唤醒越高越饱和越亮。
- * 注意：这是「词典 + 规则」的粗略估计，不是真正的 AI/NLP——
- * 但完全在浏览器本地跑，不联网、不传任何文字，符合「匿名」。
+ * 情绪 → 颜色：用户自选颜色（原生取色器），不再做词典自动分析。
+ * 颜色即情绪坐标：暖色 = 积极、冷色 = 消极。
+ * 下面这些只用于个人主页的「冷暖规律」推断，全部在浏览器本地跑。
  * ============================================================ */
-const EMOTION_LEXICON = {
-  // 高唤醒 · 积极
-  "兴奋": [0.8, 0.9], "激动": [0.8, 0.95], "热血": [0.7, 0.85], "狂喜": [0.9, 0.9],
-  "亢奋": [0.7, 0.95], "振奋": [0.7, 0.8], "期待": [0.6, 0.7], "憧憬": [0.6, 0.65],
-  "惊喜": [0.8, 0.75], "感动": [0.8, 0.7], "幸福": [0.9, 0.6], "痛快": [0.7, 0.7],
-  // 高唤醒 · 消极
-  "愤怒": [-0.8, 0.9], "生气": [-0.7, 0.85], "暴躁": [-0.7, 0.85], "崩溃": [-0.85, 0.95],
-  "焦虑": [-0.7, 0.8], "烦躁": [-0.6, 0.75], "慌": [-0.6, 0.8], "恐惧": [-0.8, 0.9],
-  "害怕": [-0.75, 0.85], "委屈": [-0.7, 0.7], "嫉妒": [-0.5, 0.7], "绝望": [-0.9, 0.7],
-  "无助": [-0.7, 0.7], "压抑": [-0.7, 0.6], "煎熬": [-0.7, 0.7], "抓狂": [-0.7, 0.9],
-  // 中唤醒 · 积极
-  "开心": [0.8, 0.6], "高兴": [0.75, 0.6], "快乐": [0.8, 0.55], "满足": [0.7, 0.4],
-  "放松": [0.6, 0.25], "舒服": [0.6, 0.3], "释然": [0.5, 0.35], "轻松": [0.6, 0.3],
-  "愉快": [0.7, 0.5], "欢喜": [0.7, 0.55], "踏实": [0.5, 0.3], "安心": [0.5, 0.25],
-  "感恩": [0.6, 0.4], "温暖": [0.7, 0.4], "甜蜜": [0.8, 0.5], "欣慰": [0.5, 0.4],
-  "向往": [0.6, 0.55], "自豪": [0.6, 0.5], "骄傲": [0.6, 0.5],
-  // 中唤醒 · 消极
-  "难过": [-0.7, 0.55], "伤心": [-0.75, 0.55], "失落": [-0.6, 0.45], "失望": [-0.65, 0.5],
-  "孤独": [-0.7, 0.4], "孤单": [-0.7, 0.4], "寂寞": [-0.65, 0.35], "想家": [-0.55, 0.45],
-  "迷茫": [-0.5, 0.4], "困惑": [-0.3, 0.4], "纠结": [-0.4, 0.5], "疲惫": [-0.5, 0.4],
-  "累": [-0.5, 0.45], "倦怠": [-0.55, 0.35], "空": [-0.5, 0.3], "空虚": [-0.55, 0.35],
-  "麻木": [-0.4, 0.2], "无聊": [-0.4, 0.35], "烦": [-0.5, 0.6], "沮丧": [-0.65, 0.5],
-  "颓废": [-0.6, 0.35], "无力": [-0.6, 0.4], "心累": [-0.6, 0.45], "惆怅": [-0.45, 0.35],
-  "不甘": [-0.5, 0.55], "抑郁": [-0.75, 0.35], "emo": [-0.6, 0.4],
-  // 低唤醒 · 平静
-  "平静": [0.2, 0.15], "淡定": [0.2, 0.15], "安静": [0.2, 0.15], "平和": [0.3, 0.15],
-  "从容": [0.3, 0.15], "淡然": [0.1, 0.15], "无所谓": [-0.1, 0.2], "沉默": [-0.1, 0.2],
-};
 
-const EM_INTENSIFY = ["极其", "极度", "非常", "特别", "超级", "超", "十分", "万分", "太", "很", "格外", "尤其", "贼", "巨", "好"];
-const EM_SOFTEN = ["有点", "有些", "略微", "稍微", "稍稍", "一点点", "有点儿", "些许", "多少", "略显", "些微", "微微"];
-
-function clampNum(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-
-// 效价 valence(-1~1) × 唤醒 arousal(0~1) → HSL 颜色
-function emotionColor(v, a) {
-  let hue;
-  if (v >= 0) hue = clampNum(130 - a * 170, 10, 130); // 积极：橙(高唤醒) ~ 绿(低唤醒)
-  else        hue = 200 + a * 90;                     // 消极：蓝(低唤醒) ~ 紫(高唤醒)
-  const s = clampNum(50 + a * 45 + Math.abs(v) * 15, 40, 100);
-  const l = clampNum(60 - a * 8 + v * 4, 40, 70);
-  return "hsl(" + hue.toFixed(0) + "," + s.toFixed(0) + "%," + l.toFixed(0) + "%)";
-}
-
-function emotionLabel(v, a, word, matched) {
-  const val = v > 0.2 ? "积极" : (v < -0.2 ? "消极" : "中性");
-  const ar = a > 0.6 ? "强烈" : (a > 0.3 ? "中等" : "平静");
-  return matched ? "识别：" + word + "（" + val + " · " + ar + "）" : "没识别出情绪词，先用中性色";
-}
-
-// 分析单个命中词在上下文里的情绪（否定翻转 + 程度词调节）
-function analyzeWord(word, text) {
-  const idx = text.indexOf(word);
-  const before = text.slice(0, idx);
-  const negated = /(没有|不怎么|不太|不是|不|没|无|算不上)$/.test(before);
-  // 程度词：先在「去掉否定词」的文本里找，避免「不太」里的「太」被误判成加强
-  const cleaned = text.replace(/(没有|不怎么|不太|不是|算不上|不|没|无)/g, "");
-  let intensity = 0;
-  if (EM_INTENSIFY.some(w => cleaned.includes(w))) intensity = +0.3;
-  else if (EM_SOFTEN.some(w => cleaned.includes(w))) intensity = -0.3;
-  const bv = EMOTION_LEXICON[word][0], ba = EMOTION_LEXICON[word][1];
-  const v = negated ? -bv * 0.65 : bv;
-  const a = clampNum(ba + intensity, 0, 1);
-  return { found: true, word: word, negated: negated, v: v, a: a, color: emotionColor(v, a), label: emotionLabel(v, a, word, true) };
-}
-
-// 提取文本里所有命中的情绪词（按出现顺序，去掉被更长词覆盖的重叠）
-function analyzeEmotions(raw) {
-  const text = String(raw || "").trim();
-  const hits = [];
-  for (const word in EMOTION_LEXICON) {
-    let idx = text.indexOf(word);
-    while (idx >= 0) {
-      hits.push({ word, idx });
-      idx = text.indexOf(word, idx + word.length);
-    }
+// 把存储的颜色统一成 #rrggbb。兼容旧数据里的 hsl(...) 字符串，避免取色器回填成黑色。
+function toHex(c) {
+  const s = String(c || "").trim();
+  if (/^#?[0-9a-f]{6}$/i.test(s)) return "#" + s.replace(/^#/, "").toLowerCase();
+  const m = /^hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)$/i.exec(s);
+  if (m) {
+    const h = ((parseFloat(m[1]) % 360) + 360) % 360;
+    const sat = Math.max(0, Math.min(100, parseFloat(m[2]))) / 100;
+    const lig = Math.max(0, Math.min(100, parseFloat(m[3]))) / 100;
+    const c = (1 - Math.abs(2 * lig - 1)) * sat;
+    const hp = h / 60;
+    const x = c * (1 - Math.abs((hp % 2) - 1));
+    let r = 0, g = 0, b = 0;
+    if (hp < 1) { r = c; g = x; }
+    else if (hp < 2) { r = x; g = c; }
+    else if (hp < 3) { g = c; b = x; }
+    else if (hp < 4) { g = x; b = c; }
+    else if (hp < 5) { r = x; b = c; }
+    else { r = c; b = x; }
+    const m2 = lig - c / 2;
+    const hx = v => Math.round((v + m2) * 255).toString(16).padStart(2, "0");
+    return "#" + hx(r) + hx(g) + hx(b);
   }
-  if (!hits.length) return [];
-  hits.sort((a, b) => a.idx - b.idx || b.word.length - a.word.length);
-  const picked = [];
-  for (const h of hits) {
-    if (picked.some(p => h.idx >= p.idx && h.idx < p.idx + p.word.length)) continue;
-    picked.push(h);
-  }
-  picked.sort((a, b) => a.idx - b.idx);
-  return picked.map(h => analyzeWord(h.word, text));
+  return "#F2B84B";
 }
 
-// 分析自由文本情绪 → { found, word, v, a, color, label, word2, v2, color2 }
-// 主情绪 = 第一个出现的情绪词；副情绪 = 之后出现的另一个不同词（用于双色点）
-function analyzeEmotion(raw) {
-  const matches = analyzeEmotions(raw);
-  if (!matches.length) {
-    return { found: false, word: null, v: 0, a: 0.3, color: emotionColor(0, 0.3), label: emotionLabel(0, 0.3, null, false), word2: null, v2: null, color2: null };
+// 颜色 → 冷暖度 w（-1 冷 ~ +1 暖）：橙≈+1，蓝≈-1，绿/品红≈中性。
+function warmthOf(color) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(toHex(color));
+  if (!m) return 0;
+  const n = parseInt(m[1], 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h = (h * 60 + 360) % 360;
   }
-  const main = matches[0];
-  const second = matches.find(m => m.word !== main.word) || null;
-  return Object.assign({}, main, {
-    word2: second ? second.word : null,
-    v2: second ? second.v : null,
-    color2: second ? second.color : null,
+  return Math.cos((h - 35) * Math.PI / 180);
+}
+
+// 冷暖度 → 一句口语化的心情（用于「情绪规律」文案）
+function warmthPhrase(w) {
+  if (w >= 0.6) return "几乎都是暖色，心情挺热烈";
+  if (w >= 0.3) return "偏暖色，心情挺轻快";
+  if (w > -0.3) return "冷暖比较中性，心情平静";
+  if (w > -0.6) return "偏冷色，心情挺低落";
+  return "几乎都是冷色，心情挺沉重";
+}
+
+// 一组点的平均冷暖度
+function avgWarmth(arr) {
+  let sum = 0, n = 0;
+  arr.forEach(p => { sum += warmthOf(colorOf(p)); n++; });
+  return n ? sum / n : 0;
+}
+
+// 一组点的平均颜色（简单 RGB 平均，用作规律前的小圆点）
+function avgColor(arr) {
+  let r = 0, g = 0, b = 0, n = 0;
+  arr.forEach(p => {
+    const v = parseInt(toHex(colorOf(p)).slice(1), 16);
+    r += (v >> 16) & 255; g += (v >> 8) & 255; b += v & 255; n++;
   });
+  if (!n) return "#9AA7B1";
+  const hx = c => c.toString(16).padStart(2, "0");
+  return "#" + hx(Math.round(r / n)) + hx(Math.round(g / n)) + hx(Math.round(b / n));
 }
 
 // 取一个点的颜色（新数据用 color，旧数据用 DIR 兜底）
@@ -713,7 +670,6 @@ function colorOf(p) {
 
 // 取一个点的情绪文字（新数据用 emotion，旧数据用 from→to 兜底）
 function emotionText(p) {
-  if (p.emotion && p.emotion2) return p.emotion + " · " + p.emotion2;
   if (p.emotion) return p.emotion;
   if (p.from || p.to) return (p.from || "") + (p.to ? " → " + p.to : "");
   return "";
@@ -735,13 +691,8 @@ const SCENE_GROUPS = [
 /* ============================================================
  * 公共演示点已清空；保留结构，方便以后按需恢复。
  * ============================================================ */
-function seedPoint(lng, lat, name, scene, emotion, note, time) {
-  const r = analyzeEmotion(emotion);
-  return {
-    lng, lat, name, scene, emotion, note, time,
-    color: r.color,
-    color2: r.color2,
-  };
+function seedPoint(lng, lat, name, scene, emotion, color, note, time) {
+  return { lng, lat, name, scene, emotion, color, note, time };
 }
 
 const SEED_POINTS = [];
@@ -786,19 +737,9 @@ let demoHidden = loadDemoHidden();
 /* ============================================================
  * 渲染静态 UI：图例（情绪色谱）/ 场景下拉
  * ============================================================ */
-const EM_LEGEND = [
-  { color: "#7cc48c", label: "平静 · 满足" },
-  { color: "#ffb84d", label: "开心 · 愉悦" },
-  { color: "#ff6a3d", label: "兴奋 · 激动" },
-  { color: "#5a8bff", label: "难过 · 失落" },
-  { color: "#b48cff", label: "焦虑 · 愤怒" },
-];
 const legendEl = document.getElementById("legend");
 legendEl.innerHTML =
-  '<span style="opacity:.7">情绪</span>' +
-  EM_LEGEND.map(d =>
-    `<div class="row"><span class="sw" style="--c:${d.color}"></span>${d.label}</div>`
-  ).join("");
+  '<span style="opacity:.7">颜色</span><span>＝ 此刻的心情，自己选</span>';
 
 const sceneSelect = document.getElementById("sceneSelect");
 const SCENE_VALUES = new Set(SCENE_GROUPS.flatMap(g => g.items));
@@ -854,18 +795,15 @@ let editingId = null;
 let picking = false;
 let geocoder = null;
 
-function dotHtml(color, color2) {
-  const dual = !!color2 && color2 !== color;
-  let style = "--c:" + color;
-  if (dual) style += ";--c2:" + color2;
-  return `<div class="dot${dual ? " dual" : ""}" style="${style}"><span class="core"></span></div>`;
+function dotHtml(color) {
+  return `<div class="dot" style="--c:${color}"><span class="core"></span></div>`;
 }
 
 function renderPoint(p) {
   const mine = isMine(p);
   const marker = new AMap.Marker({
     position: [p.lng, p.lat],
-    content: dotHtml(colorOf(p), p.color2),
+    content: dotHtml(colorOf(p)),
     offset: new AMap.Pixel(-8, -8),
     zIndex: 100,
     draggable: mine,
@@ -899,15 +837,12 @@ function renderPoint(p) {
 const tip = document.getElementById("tip");
 function showTip(p, x, y) {
   const c = colorOf(p);
-  const dual = !!p.color2 && p.color2 !== c;
-  let style = "--c:" + c;
-  if (dual) style += ";--c2:" + p.color2;
   const who = p.displayName || p.display_name || "匿名";
   const ym = yearMonthOfPoint(p);
   tip.innerHTML =
     `<div class="t-scene">${escapeHtml(who)} · ${escapeHtml(ym || "未标记年月")}</div>` +
     `<div class="t-scene">${escapeHtml(p.scene)}</div>` +
-    `<div class="t-fromto"><span class="t-dot${dual ? " dual" : ""}" style="${style}"></span>${escapeHtml(emotionText(p))}</div>`;
+    `<div class="t-fromto"><span class="t-dot" style="--c:${c}"></span>${escapeHtml(emotionText(p))}</div>`;
   tip.style.left = x + "px";
   tip.style.top = (y - 16) + "px";
   tip.classList.add("show");
@@ -1242,9 +1177,7 @@ function adminFromRegeocode(re) {
 const panel = document.getElementById("inputPanel");
 const nameInput = document.getElementById("nameInput");
 const emotionInput = document.getElementById("emotionInput");
-const emotionInput2 = document.getElementById("emotionInput2");
-const emSwatch = document.getElementById("emSwatch");
-const emLabel = document.getElementById("emLabel");
+const emotionColor = document.getElementById("emotionColor");
 const noteInput = document.getElementById("noteInput");
 const ipError = document.getElementById("ipError");
 const ipTitle = document.getElementById("ipTitle");
@@ -1264,29 +1197,6 @@ const pickBtn = document.getElementById("pickBtn");
 const pickHint = document.getElementById("pickHint");
 const geoBtn = document.getElementById("geoBtn");
 
-let currentEmotion = null;
-
-function updateEmotionPreview() {
-  const main = analyzeEmotion(emotionInput.value);
-  const subText = emotionInput2.value.trim();
-  const sub = subText ? analyzeEmotion(subText) : null;
-  currentEmotion = Object.assign({}, main, {
-    color2: sub ? sub.color : main.color2,
-    word2: sub ? (sub.word || subText) : main.word2,
-    subLabel: sub ? sub.label : "",
-  });
-  emSwatch.style.setProperty("--c", currentEmotion.color);
-  if (currentEmotion.color2 && currentEmotion.color2 !== currentEmotion.color) {
-    emSwatch.style.setProperty("--c2", currentEmotion.color2);
-    emSwatch.classList.add("dual");
-  } else {
-    emSwatch.style.removeProperty("--c2");
-    emSwatch.classList.remove("dual");
-  }
-  emLabel.textContent = subText
-    ? "主：" + currentEmotion.label + "  ·  副：" + (currentEmotion.subLabel || ("识别：" + subText))
-    : (currentEmotion.word2 ? currentEmotion.label + "  ·  还有「" + currentEmotion.word2 + "」" : currentEmotion.label);
-}
 
 /* ============================================================
  * 自定义日历（替代原生 date 弹出，智能向上展开、更大触控）
@@ -1465,12 +1375,10 @@ function openPanel(name) {
   ipDelete.style.display = "none";
   ipSubmit.textContent = "提交";
   nameInput.value = name || "";
-  emotionInput.value = ""; emotionInput2.value = ""; noteInput.value = "";
+  emotionInput.value = ""; emotionColor.value = "#F2B84B"; noteInput.value = "";
   timeInput.value = todayDateStr();
   updateDateField();
   sceneSelect.value = "";
-  currentEmotion = null;
-  updateEmotionPreview();
   ipError.style.display = "none";
   panel.classList.add("show");
 }
@@ -1484,14 +1392,13 @@ function openEditPanel(p) {
   ipSubmit.textContent = "保存";
   nameInput.value = p.name || "";
   emotionInput.value = p.emotion || ((p.from || p.to) ? (p.from || "") + " → " + (p.to || "") : "");
-  emotionInput2.value = p.emotion2 || "";
+  emotionColor.value = toHex(p.color);
   noteInput.value = p.note || "";
   timeInput.value = p.time || "";
   updateDateField();
   const sceneValue = (p.scene && p.scene !== "不指定") ? p.scene : "";
   ensureSceneOption(sceneValue);
   sceneSelect.value = sceneValue;
-  updateEmotionPreview();
   ipError.style.display = "none";
   placeDraftMarker(p.lng, p.lat);
   draftAdmin = {
@@ -1522,9 +1429,7 @@ function pointRow(p) {
     name: p.name || "",
     scene: p.scene || "不指定",
     emotion: p.emotion || "",
-    emotion2: p.emotion2 || "",
     color: p.color || "",
-    color2: p.color2 || null,
     note: p.note || "",
     emotion_date: p.time || null,
     captured_at: p.capturedAt || new Date().toISOString(),
@@ -1546,9 +1451,7 @@ function toClientPoint(row) {
     name: row.name || "",
     scene: row.scene || "不指定",
     emotion: row.emotion || "",
-    emotion2: row.emotion2 || "",
     color: row.color || "",
-    color2: row.color2 || null,
     note: row.note || "",
     time: row.emotion_date || "",
     capturedAt: row.captured_at || row.created_at,
@@ -1603,8 +1506,6 @@ async function deletePointFromBackend(id) {
   } catch (e) {}
 }
 
-emotionInput.addEventListener("input", updateEmotionPreview);
-emotionInput2.addEventListener("input", updateEmotionPreview);
 
 function focusBrowserLocation(openDraft) {
   if (!navigator.geolocation) {
@@ -1651,9 +1552,8 @@ document.getElementById("ipCancel").addEventListener("click", closePanel);
 
 ipSubmit.addEventListener("click", function () {
   const emotion = emotionInput.value.trim();
-  const emotion2 = emotionInput2.value.trim();
   if (!draftPos) { showErr("请先在搜索框选一个地点"); return; }
-  if (!emotion) { showErr("请写下此刻的情绪"); return; }
+  if (!emotion) { showErr("请写下此刻的心情"); return; }
   if (!isAuthed()) { openLogin(); authErr("先登录，你的情绪才能存进自己的日记——公共地图上依旧匿名。", true); return; }
 
   const data = {
@@ -1662,9 +1562,7 @@ ipSubmit.addEventListener("click", function () {
     name: nameInput.value.trim(),
     scene: sceneSelect.value || "不指定",
     emotion: emotion,
-    emotion2: emotion2,
-    color: (currentEmotion && currentEmotion.color) || "#8a93a3",
-    color2: emotion2 ? ((currentEmotion && currentEmotion.color2) || null) : null,
+    color: emotionColor.value || "#F2B84B",
     note: noteInput.value.trim(),
     time: timeInput.value,
     capturedAt: new Date().toISOString(),
@@ -2031,15 +1929,6 @@ function statCell(label, val) {
   return `<div class="stat"><b>${escapeHtml(String(val))}</b><span>${escapeHtml(label)}</span></div>`;
 }
 
-// 把平均效价 v（-1~1）翻译成一句口语化的心情
-function valencePhrase(v) {
-  if (v >= 0.6) return "觉得心情很舒畅";
-  if (v >= 0.3) return "觉得心情挺舒畅";
-  if (v >= 0.1) return "觉得还挺轻松";
-  if (v > -0.3) return "心情比较平静";
-  if (v > -0.6) return "觉得不太开心";
-  return "觉得很不开心";
-}
 
 function parseDateStr(s) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s || ""))) return null;
@@ -2086,14 +1975,9 @@ function groupedMoodInsights(pts, keyFn, prefix) {
   });
   return Object.keys(groups).map(key => {
     const arr = groups[key];
-    let sv = 0, sa = 0, matched = 0;
-    arr.forEach(p => {
-      const r = analyzeEmotion(emotionText(p));
-      if (r.found) { sv += r.v; sa += r.a; matched++; }
-    });
-    return { key, n: arr.length, matched, v: sv / matched, a: sa / matched, prefix };
-  }).filter(g => g.n >= 2 && g.matched > 0)
-    .sort((a, b) => b.n - a.n || b.v - a.v);
+    return { key, n: arr.length, w: avgWarmth(arr), c: avgColor(arr), prefix };
+  }).filter(g => g.n >= 2)
+    .sort((a, b) => b.n - a.n || b.w - a.w);
 }
 
 function renderHome() {
@@ -2143,19 +2027,7 @@ function renderHome() {
   // 情绪洞察
   const insightEl = document.getElementById("homeInsights");
 
-  // 1) 矛盾情绪：主情绪与副情绪效价相反 = 「两种相反的情绪同时存在」
-  const contra = [];
-  pts.forEach(p => {
-    const c = colorOf(p);
-    if (p.color2 && p.color2 !== c) {
-      const r = analyzeEmotion(emotionText(p));
-      if (typeof r.v2 === "number" && r.v * r.v2 < 0) {
-        contra.push({ c1: r.color, c2: r.color2, main: r.word, second: r.word2 });
-      }
-    }
-  });
-
-  // 2) 场景规律：按场景聚合，自动浮现「在这里我通常是什么感觉」
+  // 场景规律：按场景聚合，自动浮现「在这里我通常是什么感觉」（冷暖从颜色推断）
   const groups = {};
   pts.forEach(p => {
     const key = (p.scene && p.scene !== "不指定") ? p.scene : (p.name || "");
@@ -2164,53 +2036,41 @@ function renderHome() {
   });
   const insights = Object.keys(groups).map(key => {
     const arr = groups[key];
-    let sv = 0, sa = 0, matched = 0;
-    arr.forEach(p => {
-      const r = analyzeEmotion(emotionText(p));
-      if (r.found) { sv += r.v; sa += r.a; matched++; }
-    });
-    return { key, n: arr.length, matched, v: sv / matched, a: sa / matched };
-  }).filter(g => g.n >= 2 && g.matched > 0)
-    .sort((a, b) => b.v - a.v);
+    return { key, n: arr.length, w: avgWarmth(arr), c: avgColor(arr) };
+  }).filter(g => g.n >= 2)
+    .sort((a, b) => b.w - a.w);
 
   const seasonInsights = groupedMoodInsights(pts, p => seasonOfDate(p.time), "在");
   const monthInsights = groupedMoodInsights(pts, p => monthOfDate(p.time), "在");
   const dayTypeInsights = groupedMoodInsights(pts, p => dayTypeOfDate(p.time), "在");
 
   let insightHtml = "";
-  if (contra.length) {
-    const ex = contra[0];
-    insightHtml += `<div class="insight">
-      <span class="in-dot dual" style="--c:${ex.c1};--c2:${ex.c2}"></span>
-      <span class="in-text">有 ${contra.length} 笔「${escapeHtml(ex.main)}」与「${escapeHtml(ex.second)}」同时出现的复杂时刻——相反的情绪，可以同时是真的<span class="in-count">（${contra.length} 笔）</span></span>
-    </div>`;
-  }
   insightHtml += insights.map(g =>
     `<div class="insight">
-      <span class="in-dot" style="--c:${emotionColor(g.v, g.a)}"></span>
-      <span class="in-text">在「${escapeHtml(g.key)}」里，我通常${valencePhrase(g.v)}<span class="in-count">（${g.n} 笔）</span></span>
+      <span class="in-dot" style="--c:${g.c}"></span>
+      <span class="in-text">在「${escapeHtml(g.key)}」里，我${warmthPhrase(g.w)}<span class="in-count">（${g.n} 笔）</span></span>
     </div>`).join("");
 
   insightHtml += seasonInsights.slice(0, 4).map(g =>
     `<div class="insight">
-      <span class="in-dot" style="--c:${emotionColor(g.v, g.a)}"></span>
-      <span class="in-text">${escapeHtml(g.prefix)}「${escapeHtml(g.key)}」，我的情绪通常${valencePhrase(g.v)}<span class="in-count">（${g.n} 笔）</span></span>
+      <span class="in-dot" style="--c:${g.c}"></span>
+      <span class="in-text">${escapeHtml(g.prefix)}「${escapeHtml(g.key)}」，我${warmthPhrase(g.w)}<span class="in-count">（${g.n} 笔）</span></span>
     </div>`).join("");
 
   insightHtml += dayTypeInsights.slice(0, 2).map(g =>
     `<div class="insight">
-      <span class="in-dot" style="--c:${emotionColor(g.v, g.a)}"></span>
-      <span class="in-text">${escapeHtml(g.prefix)}「${escapeHtml(g.key)}」，我的情绪通常${valencePhrase(g.v)}<span class="in-count">（${g.n} 笔）</span></span>
+      <span class="in-dot" style="--c:${g.c}"></span>
+      <span class="in-text">${escapeHtml(g.prefix)}「${escapeHtml(g.key)}」，我${warmthPhrase(g.w)}<span class="in-count">（${g.n} 笔）</span></span>
     </div>`).join("");
 
   insightHtml += monthInsights.slice(0, 3).map(g =>
     `<div class="insight">
-      <span class="in-dot" style="--c:${emotionColor(g.v, g.a)}"></span>
-      <span class="in-text">${escapeHtml(g.key)}出现得比较多，我通常${valencePhrase(g.v)}<span class="in-count">（${g.n} 笔）</span></span>
+      <span class="in-dot" style="--c:${g.c}"></span>
+      <span class="in-text">${escapeHtml(g.key)}出现得比较多，我${warmthPhrase(g.w)}<span class="in-count">（${g.n} 笔）</span></span>
     </div>`).join("");
 
   insightEl.innerHTML = insightHtml ||
-    `<div class="in-hint">在同一个地方、季节、月份或周末 / 工作日留下 2 笔以上，这里就会浮现出你的「情绪规律」；把「又开心又难过」写下来，会浮现出你的「复杂时刻」。</div>`;
+    `<div class="in-hint">在同一个地方、季节、月份或周末 / 工作日留下 2 笔以上，这里就会浮现出你的「情绪规律」——颜色会替你说话。</div>`;
 
   // 情绪光谱（按时间从旧到新，左→右）
   const specEl = document.getElementById("homeSpectrum");
@@ -2233,9 +2093,8 @@ function renderHome() {
       const where = (p.scene && p.scene !== "不指定") ? p.scene : (p.name || "未命名地点");
       const note = p.note ? " · " + p.note : "";
       const c = colorOf(p);
-      const dual = p.color2 && p.color2 !== c;
       return `<div class="home-item" data-id="${escapeHtml(p.id)}">
-        <span class="hd${dual ? " dual" : ""}" style="--c:${c}${dual ? ";--c2:" + p.color2 : ""}"></span>
+        <span class="hd" style="--c:${c}"></span>
         <div class="hi-main">
           <div class="hi-em">${escapeHtml(emotionText(p) || "（未填写情绪）")}</div>
           <div class="hi-sub">${escapeHtml(where + note)}</div>

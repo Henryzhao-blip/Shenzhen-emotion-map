@@ -1,6 +1,6 @@
-# Shenzhen Emotion Map
+# Emotion Map
 
-A static, participatory emotion map for Shenzhen.
+A static, participatory emotion map — drop a point for how you feel right now, anywhere in the country.
 
 Main entry:
 
@@ -30,14 +30,18 @@ It creates `public.emotion_points` with:
 
 - public coordinates rounded to 3 decimals (privacy: ~block / neighborhood scale),
 - a `user_id` column referencing `auth.users`,
+- a `display_name` column plus `country` / `province` / `city` / `district` for the point's admin region,
 - row-level security (RLS): anyone can read (anonymous), but only the owning user can insert / update / delete.
+
+It also creates `public.profiles` (one row per user: `display_name`, `is_guest`) for nicknames and anonymous guest accounts.
 
 ### 2. Configure `index.html`
 
-Fill in two values at the top of `index.html`:
+Fill in three values at the top of `index.html`:
 
 - `PUBLIC_DB_URL` — your Supabase project URL (e.g. `https://xxxx.supabase.co`)
 - `PUBLIC_DB_KEY` — your public publishable key
+- `PUBLIC_SITE_URL` — the Netlify URL the magic-link email redirects back to
 
 The public key is safe to expose in the browser. Do **not** paste your `service_role` key.
 
@@ -50,6 +54,8 @@ In Supabase Dashboard → Authentication:
 - Add the same URL to the **Redirect URLs** allow-list.
 
 The site calls `signInWithOtp`, so a user enters their email, receives a login link, and clicks it to sign in. On redirect, `getSession()` restores the session automatically.
+
+Anonymous sign-in is also enabled (`signInAnonymously`) — visitors can start as a guest and later bind an email to the same account via `updateUser({ email })`.
 
 ### 4. Privacy behavior
 
