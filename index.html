@@ -81,13 +81,6 @@
     background: var(--panel); backdrop-filter: blur(10px);
     border: 1px solid var(--line); color: var(--text); font-size: 14px; outline: none;
   }
-  #searchBtn {
-    padding: 0 18px; border-radius: 14px; border: 1px solid var(--line);
-    background: var(--accent); color: #04222a; font-size: 14px; font-weight: 600; cursor: pointer;
-    white-space: nowrap;
-  }
-  #searchBtn:hover { filter: brightness(1.1); }
-  #searchBtn:disabled { opacity: 0.4; cursor: not-allowed; }
   #pickBtn {
     display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
     width: 44px; border-radius: 14px; border: 1px solid var(--line);
@@ -102,19 +95,6 @@
   #secWarn {
     display: none; margin-top: 6px; font-size: 11.5px; color: #ffd479; line-height: 1.5;
   }
-  #results {
-    display: none; margin-top: 6px; border-radius: 12px; overflow: hidden;
-    background: #10161f; border: 1px solid var(--line); max-height: 320px; overflow-y: auto;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-  }
-  #results.show { display: block; }
-  .res-item { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); }
-  .res-item:hover { background: rgba(255,255,255,0.08); }
-  .res-item:last-child { border-bottom: 0; }
-  .res-name { font-size: 14px; color: var(--text); }
-  .res-addr { font-size: 11.5px; color: var(--dim); margin-top: 2px; }
-  .res-err { padding: 12px 14px; font-size: 12.5px; color: #ff8a8a; line-height: 1.6; }
-
   /* 高德自动补全下拉，暗色化 */
   .amap-sug, .amap-sug * { box-sizing: border-box; }
   .amap-sug {
@@ -414,12 +394,10 @@
   <div id="searchWrap">
     <div class="search-row">
       <input id="searchInput" placeholder="搜索一个地点，记一笔情绪…" autocomplete="off" />
-      <button id="searchBtn">搜索</button>
       <button id="pickBtn" title="直接在地图上定点">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
       </button>
     </div>
-    <div id="results"></div>
     <div id="secWarn">⚠️ 地点搜索需要高德的「安全密钥」（securityJsCode）。请在高德控制台配置后，填进代码顶部 <code>AMAP_SECURITY</code>。</div>
   </div>
 </div>
@@ -934,125 +912,51 @@ function init() {
 }
 
 /* ============================================================
- * 地点搜索（高德 PlaceSearch + 自定义结果列表）
- * 用 PlaceSearch 而不是 Autocomplete：Autocomplete 在 key / 安全密钥
- * 配置出错时会「静默失败」，用户什么都看不到。PlaceSearch 的回调能拿到
- * status 和 result.info，出错时把真实原因显示出来。
+ * 地点输入提示（高德 AutoComplete）
+ * 顶部搜索框 + 输入面板的地点框都接上：打字即出联想下拉，点选即落点。
  * ============================================================ */
-let placeSearch = null;
+let autoTop = null, autoPanel = null;
 
 function setupSearch() {
-  const input = document.getElementById("searchInput");
-  const btn = document.getElementById("searchBtn");
-  const results = document.getElementById("results");
-
   if (!AMAP_SECURITY) {
     document.getElementById("secWarn").style.display = "block";
-    btn.disabled = true;
     return;
   }
 
-  AMap.plugin("AMap.PlaceSearch", function () {
-    placeSearch = new AMap.PlaceSearch({
-      pageSize: 10,
-      pageIndex: 1,
+  AMap.plugin("AMap.AutoComplete", function () {
+    // 顶部搜索框：联想 → 落点并打开面板
+    autoTop = new AMap.AutoComplete({ input: "searchInput" });
+    autoTop.on("select", function (e) {
+      const poi = e.poi;
+      const loc = locOf(poi);
+      if (!loc) return;
+      const name = poi.name || "";
+      document.getElementById("searchInput").value = name;
+      placeDraft(loc.lng, loc.lat, name, adminFromPoi(poi));
     });
-    btn.disabled = false;
-  });
 
-  function doSearch() {
-    const kw = input.value.trim();
-    if (!kw) { hideResults(); return; }
-    if (!placeSearch) { showResultsError("搜索服务还在加载，稍等一秒再试。"); return; }
-
-    btn.disabled = true;
-    btn.textContent = "…";
-    placeSearch.search(kw, function (status, result) {
-      btn.disabled = false;
-      btn.textContent = "搜索";
-      if (status === "complete") {
-        const pois = result.poiList && result.poiList.pois || [];
-        if (pois.length) renderResults(pois);
-        else showResultsError("没有找到「" + kw + "」，换个关键词试试。");
-      } else if (status === "no_data") {
-        showResultsError("没有找到「" + kw + "」，换个关键词试试。");
-      } else {
-        showResultsError("搜索失败：" + friendlySearchError(result && result.info));
-      }
-    });
-  }
-
-  btn.addEventListener("click", doSearch);
-  input.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") { e.preventDefault(); doSearch(); }
-  });
-
-  results.addEventListener("click", function (e) {
-    const item = e.target.closest(".res-item");
-    if (!item) return;
-    const lng = parseFloat(item.dataset.lng);
-    const lat = parseFloat(item.dataset.lat);
-    if (isNaN(lng) || isNaN(lat)) return;
-    hideResults();
-    input.value = item.dataset.name || "";
-    placeDraft(lng, lat, item.dataset.name || "", {
-      country: item.dataset.country || null,
-      province: item.dataset.province || null,
-      city: item.dataset.city || null,
-      district: item.dataset.district || null,
+    // 输入面板地点框：联想 → 改地点 + 移动青点 + 更新省市区
+    autoPanel = new AMap.AutoComplete({ input: "nameInput" });
+    autoPanel.on("select", function (e) {
+      const poi = e.poi;
+      const loc = locOf(poi);
+      if (!loc) return;
+      nameInput.value = poi.name || "";
+      placeDraftMarker(loc.lng, loc.lat);
+      draftAdmin = adminFromPoi(poi);
+      map.setCenter([loc.lng, loc.lat]);
+      map.setZoom(16);
+      reverseGeocode(loc.lng, loc.lat, function (resolvedName, resolvedAdmin) {
+        draftAdmin = resolvedAdmin || draftAdmin;
+      });
     });
   });
-
-  document.getElementById("map").addEventListener("click", hideResults);
-}
-
-function renderResults(pois) {
-  const results = document.getElementById("results");
-  results.innerHTML = pois.map(function (poi) {
-    const pos = locOf(poi);
-    const lng = pos ? pos.lng : "";
-    const lat = pos ? pos.lat : "";
-    const admin = adminFromPoi(poi);
-    const addr = [poi.pname, poi.cityname, poi.adname, poi.address]
-      .filter(function (x) { return x && x !== poi.name; }).join(" · ");
-    return `<div class="res-item" data-lng="${lng}" data-lat="${lat}" data-name="${escapeHtml(poi.name || "")}"
-      data-country="${escapeHtml(admin.country || "")}" data-province="${escapeHtml(admin.province || "")}"
-      data-city="${escapeHtml(admin.city || "")}" data-district="${escapeHtml(admin.district || "")}">
-      <div class="res-name">${escapeHtml(poi.name || "")}</div>
-      <div class="res-addr">${escapeHtml(addr)}</div>
-    </div>`;
-  }).join("");
-  results.classList.add("show");
-}
-
-function showResultsError(msg) {
-  const results = document.getElementById("results");
-  results.innerHTML = `<div class="res-err">${escapeHtml(msg)}</div>`;
-  results.classList.add("show");
-}
-
-function hideResults() {
-  const results = document.getElementById("results");
-  results.classList.remove("show");
-  results.innerHTML = "";
 }
 
 function escapeHtml(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
-function friendlySearchError(code) {
-  const map = {
-    "INVALID_USER_SCODE": "安全密钥（AMAP_SECURITY）不对，或与你填的 key 不属于同一个应用。",
-    "USERKEY_PLAT_NOMATCH": "key 和安全密钥不是同一应用下的，去高德控制台核对一下。",
-    "INVALID_USER_KEY": "AMAP_KEY 无效或类型不对（要用「Web端 JS API」）。",
-    "DAILY_QUERY_OVER_LIMIT": "今日搜索配额用完了，明天再来。",
-    "USER_DAILY_QUERY_OVER_LIMIT": "今日搜索配额用完了，明天再来。",
-    "ACCESS_TOO_FREQUENT": "搜索太频繁，歇一下。",
-  };
-  return map[code] || ("(" + code + ") 检查 key 与安全密钥是否都正确填写、且属于同一应用。");
 }
 
 function locOf(poi) {
