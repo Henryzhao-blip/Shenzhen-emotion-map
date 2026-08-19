@@ -12,6 +12,7 @@
     --text: #e8ecf2;
     --dim: #9aa7b8;
     --accent: #22d3ee;
+    --side-card-width: 300px;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -66,14 +67,115 @@
     display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap;
   }
   #header {
+    width: min(var(--side-card-width), calc(100vw - 32px));
     padding: 12px 16px; border-radius: 14px;
     background: var(--panel); backdrop-filter: blur(10px);
-    border: 1px solid var(--line); max-width: 300px;
+    border: 1px solid var(--line);
   }
   #header h1 { margin: 0; font-size: 18px; letter-spacing: 1px; }
   #header .sub { margin-top: 4px; font-size: 12px; color: var(--dim); line-height: 1.6; }
 
-  #searchWrap { position: relative; flex: 1 1 240px; max-width: 420px; }
+  #quickRecord {
+    position: absolute;
+    top: 166px;
+    bottom: 88px;
+    left: 16px;
+    z-index: 19;
+    width: min(var(--side-card-width), calc(100vw - 32px));
+    overflow-y: auto;
+    padding: 14px 16px 16px;
+    border-radius: 14px;
+    background: rgba(16, 22, 32, 0.88);
+    border: 1px solid var(--line);
+    box-shadow: 0 14px 42px rgba(0,0,0,0.34);
+    backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  .qr-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .qr-field { margin: 0; position: relative; }
+  .qr-field label { display: block; margin-bottom: 6px; font-size: 11.5px; color: var(--dim); }
+  .qr-field input,
+  .qr-field select,
+  .qr-field textarea {
+    width: 100%;
+    padding: 10px 11px;
+    border-radius: 10px;
+    font-size: 13px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+    color: var(--text);
+    outline: none;
+  }
+  .qr-field input:focus,
+  .qr-field select:focus,
+  .qr-field textarea:focus { border-color: rgba(34,211,238,0.5); }
+  .qr-field select option { background: #10161f; color: var(--text); }
+  .qr-row { display: flex; align-items: stretch; gap: 7px; }
+  .qr-row input { flex: 1; min-width: 0; }
+  .qr-row .mini-btn { padding: 0 10px; }
+  .qr-row #quickPlaceBtn { flex: 0 0 54px; }
+  .qr-row #pickBtn { flex: 0 0 44px; }
+  .qr-em-row { display: flex; align-items: center; gap: 10px; }
+  .qr-em-row #quickEmotion {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    padding: 11px 12px;
+  }
+  .qr-field .qr-color {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.06), 0 0 18px var(--pick, #F2B84B), 0 0 8px var(--pick, #F2B84B);
+  }
+  .qr-field .qr-color:hover {
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.1), 0 0 26px var(--pick, #F2B84B), 0 0 10px var(--pick, #F2B84B);
+  }
+  .qr-color::-webkit-color-swatch-wrapper { padding: 0; }
+  .qr-color::-webkit-color-swatch { border: none; border-radius: 50%; }
+  .qr-color::-moz-color-swatch { border: none; border-radius: 50%; }
+  .qr-submit {
+    width: 100%;
+    margin-top: 0;
+    padding: 11px 12px;
+    border: 0;
+    border-radius: 11px;
+    background: var(--accent);
+    color: #04222a;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  #quickError {
+    display: none;
+    margin: 0;
+    color: #ff8a8a;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .quick-place-suggest {
+    top: 68px;
+    z-index: 96;
+  }
+
+  #searchWrap { display: none; position: relative; flex: 1 1 240px; max-width: 420px; }
   .search-row { display: flex; gap: 8px; }
   .search-row input { flex: 1; min-width: 0; }
   #searchInput {
@@ -428,6 +530,32 @@
   }
   .hi-btns button:hover { color: var(--text); }
   .hi-btns .del:hover { color: #ff8a8a; }
+
+  @media (max-width: 720px) {
+    #topbar {
+      left: 10px;
+      right: 10px;
+      top: 10px;
+    }
+    #header { max-width: none; width: 100%; }
+    #searchWrap { max-width: none; width: 100%; }
+    #quickRecord {
+      top: 212px;
+      bottom: auto;
+      left: 10px;
+      right: 10px;
+      width: auto;
+      max-height: 38vh;
+      padding: 12px;
+    }
+    .qr-field { margin-bottom: 8px; }
+    .qr-field textarea { min-height: 44px; }
+    #bottombar {
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -443,13 +571,46 @@
   <div id="searchWrap">
     <div class="search-row">
       <input id="searchInput" placeholder="搜索一个地点，记一笔情绪…" autocomplete="off" />
-      <button id="pickBtn" title="直接在地图上定点">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
-      </button>
     </div>
     <div id="topSuggest" class="place-suggest"></div>
     <div id="secWarn">⚠️ 地点搜索需要高德的「安全密钥」（securityJsCode）。请在高德控制台配置后，填进代码顶部 <code>AMAP_SECURITY</code>。</div>
   </div>
+</div>
+
+<div id="quickRecord">
+  <h2 class="qr-title">记下此刻</h2>
+  <div id="quickError"></div>
+  <div class="qr-field">
+    <label>场景类型（可选）</label>
+    <select id="quickScene"><option value="">不指定</option></select>
+  </div>
+  <div class="qr-field">
+    <label>地点</label>
+    <div class="qr-row">
+      <input id="quickPlace" placeholder="搜索地点" autocomplete="off" />
+      <button id="quickPlaceBtn" class="mini-btn strong" type="button">搜索</button>
+      <button id="pickBtn" title="直接在地图上定点" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+      </button>
+    </div>
+    <div id="quickSuggest" class="place-suggest quick-place-suggest"></div>
+  </div>
+  <div class="qr-field">
+    <label>此刻的心情</label>
+    <div class="qr-em-row">
+      <input id="quickEmotion" type="text" placeholder="在想些什么？" autocomplete="off" />
+      <input id="quickColor" class="qr-color" type="color" value="#F2B84B" title="选一个代表此刻的颜色" />
+    </div>
+  </div>
+  <div class="qr-field">
+    <label>一句话（可选）</label>
+    <textarea id="quickNote" rows="2" placeholder="那个具体的瞬间…"></textarea>
+  </div>
+  <div class="qr-field">
+    <label>日期（可选）</label>
+    <input id="quickDate" type="date" />
+  </div>
+  <button id="quickSubmit" class="qr-submit" type="button">记录到地图</button>
 </div>
 
 <div id="bottombar">
@@ -775,26 +936,32 @@ legendEl.innerHTML =
   '<span style="opacity:.7">颜色</span><span>＝ 此刻的心情，自己选</span>';
 
 const sceneSelect = document.getElementById("sceneSelect");
+const quickScene = document.getElementById("quickScene");
 const SCENE_VALUES = new Set(SCENE_GROUPS.flatMap(g => g.items));
-for (const g of SCENE_GROUPS) {
-  const og = document.createElement("optgroup");
-  og.label = g.name;
-  for (const t of g.items) {
-    const o = document.createElement("option");
-    o.value = t; o.textContent = t;
-    og.appendChild(o);
+
+function appendSceneGroups(select) {
+  for (const g of SCENE_GROUPS) {
+    const og = document.createElement("optgroup");
+    og.label = g.name;
+    for (const t of g.items) {
+      const o = document.createElement("option");
+      o.value = t; o.textContent = t;
+      og.appendChild(o);
+    }
+    select.appendChild(og);
   }
-  sceneSelect.appendChild(og);
 }
 
-function ensureSceneOption(scene) {
-  if (!scene || scene === "不指定" || SCENE_VALUES.has(scene)) return;
-  let legacy = sceneSelect.querySelector('optgroup[data-legacy="1"]');
+appendSceneGroups(sceneSelect);
+appendSceneGroups(quickScene);
+
+function addLegacySceneOption(select, scene) {
+  let legacy = select.querySelector('optgroup[data-legacy="1"]');
   if (!legacy) {
     legacy = document.createElement("optgroup");
     legacy.label = "旧分类";
     legacy.dataset.legacy = "1";
-    sceneSelect.appendChild(legacy);
+    select.appendChild(legacy);
   }
   if (!Array.from(legacy.options).some(o => o.value === scene)) {
     const o = document.createElement("option");
@@ -802,6 +969,12 @@ function ensureSceneOption(scene) {
     o.textContent = scene;
     legacy.appendChild(o);
   }
+}
+
+function ensureSceneOption(scene) {
+  if (!scene || scene === "不指定" || SCENE_VALUES.has(scene)) return;
+  addLegacySceneOption(sceneSelect, scene);
+  addLegacySceneOption(quickScene, scene);
 }
 
 /* ============================================================
@@ -824,6 +997,7 @@ let seedMarkers = [];
 let remoteMarkers = [];
 let draftMarker = null, draftPos = null;
 let draftAdmin = null;
+let draftSource = null;
 let editingId = null;
 let picking = false;
 let geocoder = null;
@@ -950,7 +1124,7 @@ function init() {
   map.on("click", function (e) {
     if (picking) {
       setPicking(false);
-      handlePick(e.lnglat.getLng(), e.lnglat.getLat());
+      handleQuickPick(e.lnglat.getLng(), e.lnglat.getLat());
     }
   });
   updateCounter();
@@ -967,19 +1141,36 @@ function init() {
  * 地点输入提示
  * 顶部搜索框 + 输入面板的地点框都用 PlaceSearch 取数据，再由前端渲染暗色候选层。
  * ============================================================ */
-let topPlaceSearch = null, panelPlaceSearch = null;
-let topSuggestTimer = null, panelSuggestTimer = null;
+let topPlaceSearch = null, panelPlaceSearch = null, quickPlaceSearch = null;
+let topSuggestTimer = null, panelSuggestTimer = null, quickSuggestTimer = null;
 
-function applyPoiToDraft(poi, openInputPanel) {
+function suggestTarget(target) {
+  if (target === true) return "top";
+  if (target === false || !target) return "panel";
+  return target;
+}
+
+function applyPoiToDraft(poi, target) {
+  target = suggestTarget(target);
   const loc = locOf(poi);
   if (!loc) return false;
   const name = poi.name || "";
-  if (openInputPanel) {
-    document.getElementById("searchInput").value = name;
+  if (target === "top") {
+    searchInput.value = name;
     placeDraft(loc.lng, loc.lat, name, adminFromPoi(poi));
+  } else if (target === "quick") {
+    quickPlace.value = name;
+    placeDraftMarker(loc.lng, loc.lat, "quick");
+    draftAdmin = adminFromPoi(poi);
+    map.setCenter([loc.lng, loc.lat]);
+    map.setZoom(16);
+    reverseGeocode(loc.lng, loc.lat, function (resolvedName, resolvedAdmin) {
+      draftAdmin = resolvedAdmin || draftAdmin;
+      if (resolvedName && !quickPlace.value.trim()) quickPlace.value = resolvedName;
+    });
   } else {
     nameInput.value = name;
-    placeDraftMarker(loc.lng, loc.lat);
+    placeDraftMarker(loc.lng, loc.lat, "panel");
     draftAdmin = adminFromPoi(poi);
     map.setCenter([loc.lng, loc.lat]);
     map.setZoom(16);
@@ -989,7 +1180,8 @@ function applyPoiToDraft(poi, openInputPanel) {
     });
   }
   ipError.style.display = "none";
-  hidePlaceSuggest(openInputPanel ? topSuggest : panelSuggest);
+  hideQuickErr();
+  hidePlaceSuggest(target === "top" ? topSuggest : (target === "quick" ? quickSuggest : panelSuggest));
   return true;
 }
 
@@ -1005,6 +1197,10 @@ function setupSearch() {
       pageIndex: 1,
     });
     panelPlaceSearch = new AMap.PlaceSearch({
+      pageSize: 8,
+      pageIndex: 1,
+    });
+    quickPlaceSearch = new AMap.PlaceSearch({
       pageSize: 8,
       pageIndex: 1,
     });
@@ -1024,7 +1220,8 @@ function hidePlaceSuggest(box) {
   box.innerHTML = "";
 }
 
-function renderPlaceSuggest(box, pois, openInputPanel) {
+function renderPlaceSuggest(box, pois, target) {
+  target = suggestTarget(target);
   if (!box || !Array.isArray(pois) || !pois.length) {
     hidePlaceSuggest(box);
     return;
@@ -1038,14 +1235,15 @@ function renderPlaceSuggest(box, pois, openInputPanel) {
       '<span class="ps-meta">' + escapeHtml(placeMeta(poi) || "点击选择这个地点") + '</span>';
     btn.addEventListener("mousedown", function (e) {
       e.preventDefault();
-      applyPoiToDraft(poi, openInputPanel);
+      applyPoiToDraft(poi, target);
     });
     box.appendChild(btn);
   });
   box.classList.add("show");
 }
 
-function searchPlaces(keyword, searcher, box, openInputPanel, showEmptyError) {
+function searchPlaces(keyword, searcher, box, target, showEmptyError) {
+  target = suggestTarget(target);
   if (!keyword) {
     hidePlaceSuggest(box);
     return;
@@ -1058,8 +1256,8 @@ function searchPlaces(keyword, searcher, box, openInputPanel, showEmptyError) {
     const list = result && result.poiList && result.poiList.pois;
     const pois = Array.isArray(list) ? list.filter(locOf) : [];
     if (status === "complete" && pois.length) {
-      renderPlaceSuggest(box, pois, openInputPanel);
-      if (showEmptyError && pois[0]) applyPoiToDraft(pois[0], openInputPanel);
+      renderPlaceSuggest(box, pois, target);
+      if (showEmptyError && pois[0]) applyPoiToDraft(pois[0], target);
       return;
     }
     hidePlaceSuggest(box);
@@ -1067,13 +1265,15 @@ function searchPlaces(keyword, searcher, box, openInputPanel, showEmptyError) {
   });
 }
 
-function queuePlaceSuggest(input, searcher, box, openInputPanel) {
-  const timerName = openInputPanel ? "topSuggestTimer" : "panelSuggestTimer";
-  clearTimeout(openInputPanel ? topSuggestTimer : panelSuggestTimer);
+function queuePlaceSuggest(input, searcher, box, target) {
+  target = suggestTarget(target);
+  const currentTimer = target === "top" ? topSuggestTimer : (target === "quick" ? quickSuggestTimer : panelSuggestTimer);
+  clearTimeout(currentTimer);
   const nextTimer = setTimeout(function () {
-    searchPlaces(input.value.trim(), searcher, box, openInputPanel, false);
+    searchPlaces(input.value.trim(), searcher, box, target, false);
   }, 220);
-  if (timerName === "topSuggestTimer") topSuggestTimer = nextTimer;
+  if (target === "top") topSuggestTimer = nextTimer;
+  else if (target === "quick") quickSuggestTimer = nextTimer;
   else panelSuggestTimer = nextTimer;
 }
 
@@ -1084,6 +1284,15 @@ function searchPanelPlace() {
     return;
   }
   searchPlaces(keyword, panelPlaceSearch, panelSuggest, false, true);
+}
+
+function searchQuickPlace() {
+  const keyword = quickPlace.value.trim();
+  if (!keyword) {
+    showQuickErr("请输入要搜索的地点");
+    return;
+  }
+  searchPlaces(keyword, quickPlaceSearch, quickSuggest, "quick", true);
 }
 
 function escapeHtml(s) {
@@ -1116,10 +1325,11 @@ function adminFromPoi(poi) {
   };
 }
 
-function placeDraftMarker(lng, lat) {
+function placeDraftMarker(lng, lat, source) {
   if (draftMarker) draftMarker.setMap(null);
   draftPos = { lng, lat };
   draftAdmin = null;
+  draftSource = source || "panel";
 
   draftMarker = new AMap.Marker({
     position: [lng, lat],
@@ -1140,7 +1350,7 @@ function placeDraftMarker(lng, lat) {
 }
 
 function placeDraft(lng, lat, name, admin) {
-  placeDraftMarker(lng, lat);
+  placeDraftMarker(lng, lat, "panel");
   draftAdmin = admin || null;
   map.setCenter([lng, lat]);
   map.setZoom(16);
@@ -1163,7 +1373,7 @@ function setPicking(on) {
 }
 
 function handlePick(lng, lat) {
-  placeDraftMarker(lng, lat);
+  placeDraftMarker(lng, lat, "panel");
   map.setCenter([lng, lat]);
   map.setZoom(16);
   openPanel("");
@@ -1172,6 +1382,16 @@ function handlePick(lng, lat) {
     if (name && panel.classList.contains("show") && !editingId && !nameInput.value.trim()) {
       nameInput.value = name;
     }
+  });
+}
+
+function handleQuickPick(lng, lat) {
+  placeDraftMarker(lng, lat, "quick");
+  map.setCenter([lng, lat]);
+  map.setZoom(16);
+  reverseGeocode(lng, lat, function (name, admin) {
+    draftAdmin = admin || null;
+    if (name) quickPlace.value = name;
   });
 }
 
@@ -1220,6 +1440,15 @@ const topSuggest = document.getElementById("topSuggest");
 const nameInput = document.getElementById("nameInput");
 const panelSearchBtn = document.getElementById("panelSearchBtn");
 const panelSuggest = document.getElementById("panelSuggest");
+const quickPlace = document.getElementById("quickPlace");
+const quickPlaceBtn = document.getElementById("quickPlaceBtn");
+const quickSuggest = document.getElementById("quickSuggest");
+const quickEmotion = document.getElementById("quickEmotion");
+const quickColor = document.getElementById("quickColor");
+const quickNote = document.getElementById("quickNote");
+const quickDate = document.getElementById("quickDate");
+const quickSubmit = document.getElementById("quickSubmit");
+const quickError = document.getElementById("quickError");
 const emotionInput = document.getElementById("emotionInput");
 const emotionColor = document.getElementById("emotionColor");
 
@@ -1229,6 +1458,11 @@ function syncColorGlow() {
 }
 emotionColor.addEventListener("input", syncColorGlow);
 syncColorGlow();
+function syncQuickColorGlow() {
+  quickColor.style.setProperty("--pick", quickColor.value || "#F2B84B");
+}
+quickColor.addEventListener("input", syncQuickColorGlow);
+syncQuickColorGlow();
 const noteInput = document.getElementById("noteInput");
 const ipError = document.getElementById("ipError");
 const ipTitle = document.getElementById("ipTitle");
@@ -1471,6 +1705,7 @@ function closePanel() {
   if (draftMarker) { draftMarker.setMap(null); draftMarker = null; }
   draftPos = null;
   draftAdmin = null;
+  draftSource = null;
 }
 
 // 前端点 → Supabase 行（user_id 来自当前登录用户，RLS 校验 auth.uid() = user_id）
@@ -1617,6 +1852,19 @@ nameInput.addEventListener("input", function () {
 nameInput.addEventListener("focus", function () {
   if (nameInput.value.trim()) queuePlaceSuggest(nameInput, panelPlaceSearch, panelSuggest, false);
 });
+quickPlace.addEventListener("input", function () {
+  queuePlaceSuggest(quickPlace, quickPlaceSearch, quickSuggest, "quick");
+});
+quickPlace.addEventListener("focus", function () {
+  if (quickPlace.value.trim()) queuePlaceSuggest(quickPlace, quickPlaceSearch, quickSuggest, "quick");
+});
+quickPlace.addEventListener("keydown", function (e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    searchQuickPlace();
+  }
+});
+quickPlaceBtn.addEventListener("click", searchQuickPlace);
 panelSearchBtn.addEventListener("click", searchPanelPlace);
 nameInput.addEventListener("keydown", function (e) {
   if (e.key === "Enter") {
@@ -1629,26 +1877,31 @@ geoBtn.addEventListener("click", useBrowserLocation);
 document.addEventListener("mousedown", function (e) {
   if (!document.getElementById("searchWrap").contains(e.target)) hidePlaceSuggest(topSuggest);
   if (!panelSuggest.contains(e.target) && e.target !== nameInput) hidePlaceSuggest(panelSuggest);
+  if (!quickSuggest.contains(e.target) && e.target !== quickPlace) hidePlaceSuggest(quickSuggest);
 });
 
 document.getElementById("ipClose").addEventListener("click", closePanel);
 document.getElementById("ipCancel").addEventListener("click", closePanel);
 
-ipSubmit.addEventListener("click", function () {
-  const emotion = emotionInput.value.trim();
-  if (!draftPos) { showErr("请先在搜索框选一个地点"); return; }
-  if (!emotion) { showErr("请写下此刻的心情"); return; }
-  if (!isAuthed()) { openLogin(); authErr("先登录，你的情绪才能存进自己的日记——公共地图上依旧匿名。", true); return; }
+function showQuickErr(msg) {
+  quickError.textContent = msg;
+  quickError.style.display = "block";
+}
 
-  const data = {
+function hideQuickErr() {
+  quickError.style.display = "none";
+}
+
+function buildPointData(fields) {
+  return {
     lng: draftPos.lng,
     lat: draftPos.lat,
-    name: nameInput.value.trim(),
-    scene: sceneSelect.value || "不指定",
-    emotion: emotion,
-    color: emotionColor.value || "#F2B84B",
-    note: noteInput.value.trim(),
-    time: timeInput.value,
+    name: fields.name.trim(),
+    scene: fields.scene || "不指定",
+    emotion: fields.emotion.trim(),
+    color: fields.color || "#F2B84B",
+    note: fields.note.trim(),
+    time: fields.time || "",
     capturedAt: new Date().toISOString(),
     displayName: (currentProfile() && currentProfile().name) || profileName(authUserId) || "",
     country: draftAdmin && draftAdmin.country,
@@ -1656,19 +1909,21 @@ ipSubmit.addEventListener("click", function () {
     city: draftAdmin && draftAdmin.city,
     district: draftAdmin && draftAdmin.district,
   };
+}
 
-  if (editingId) {
-    const original = findPointById(editingId);
+function savePointData(data, idToEdit) {
+  if (idToEdit) {
+    const original = findPointById(idToEdit);
     if (original && original.remote) {
       // 编辑的是云端自己的点（如换设备后）：直接改 Supabase 并重渲染
-      const ri = remotePoints.findIndex(p => p.id === editingId);
+      const ri = remotePoints.findIndex(p => p.id === idToEdit);
       if (ri >= 0) {
         remotePoints[ri] = Object.assign({}, original, data);
         updatePointInBackend(remotePoints[ri]);
       }
     } else {
       // 编辑本地点：更新 localStorage 备份 + 同步 Supabase
-      const i = savedPoints.findIndex(p => p.id === editingId);
+      const i = savedPoints.findIndex(p => p.id === idToEdit);
       if (i >= 0) {
         const updated = Object.assign({}, savedPoints[i], data);
         savedPoints[i] = updated;
@@ -1687,7 +1942,58 @@ ipSubmit.addEventListener("click", function () {
   }
   renderRemoteMarkers();
   updateCounter();
+}
+
+function resetQuickRecord() {
+  quickScene.value = "";
+  quickPlace.value = "";
+  quickEmotion.value = "";
+  quickColor.value = "#F2B84B";
+  syncQuickColorGlow();
+  quickNote.value = "";
+  quickDate.value = todayDateStr();
+  hidePlaceSuggest(quickSuggest);
+  hideQuickErr();
+  if (draftSource === "quick") {
+    if (draftMarker) { draftMarker.setMap(null); draftMarker = null; }
+    draftPos = null;
+    draftAdmin = null;
+    draftSource = null;
+  }
+}
+
+ipSubmit.addEventListener("click", function () {
+  const emotion = emotionInput.value.trim();
+  if (!draftPos || draftSource === "quick") { showErr("请先在搜索框选一个地点"); return; }
+  if (!emotion) { showErr("请写下此刻的心情"); return; }
+  if (!isAuthed()) { openLogin(); authErr("先登录，你的情绪才能存进自己的日记——公共地图上依旧匿名。", true); return; }
+
+  savePointData(buildPointData({
+    name: nameInput.value,
+    scene: sceneSelect.value,
+    emotion: emotion,
+    color: emotionColor.value,
+    note: noteInput.value,
+    time: timeInput.value,
+  }), editingId);
   closePanel();
+});
+
+quickSubmit.addEventListener("click", function () {
+  const emotion = quickEmotion.value.trim();
+  if (!draftPos || draftSource !== "quick") { showQuickErr("请先搜索并选择一个地点"); return; }
+  if (!emotion) { showQuickErr("请写下此刻的心情"); return; }
+  if (!isAuthed()) { openLogin(); authErr("先登录或以游客身份继续，记录才会存进你的地图。", true); return; }
+
+  savePointData(buildPointData({
+    name: quickPlace.value,
+    scene: quickScene.value,
+    emotion: emotion,
+    color: quickColor.value,
+    note: quickNote.value,
+    time: quickDate.value,
+  }), null);
+  resetQuickRecord();
 });
 
 ipDelete.addEventListener("click", function () {
