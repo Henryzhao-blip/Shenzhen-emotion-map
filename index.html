@@ -184,13 +184,16 @@
   .ip-field select option { background: #10161f; color: var(--text); }
   /* ---------- 情绪输入 + 取色器 ---------- */
   .em-hint { opacity: .75; font-size: 11px; }
-  .em-row { display: flex; align-items: center; gap: 10px; }
-  .em-row #emotionInput { flex: 1; min-width: 0; }
-  .em-color {
-    flex: 0 0 auto; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line);
-    border-radius: 50%; background: transparent; cursor: pointer;
+  .em-row { display: flex; align-items: center; gap: 12px; }
+  .em-row #emotionInput { flex: 1; min-width: 0; padding: 13px 15px; font-size: 15px; }
+  .ip-field .em-color {
+    flex: 0 0 auto; width: 44px; height: 44px; padding: 0; margin: 0;
+    border: none; border-radius: 50%; background: transparent; cursor: pointer;
     -webkit-appearance: none; appearance: none;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.06), 0 0 18px var(--pick, #F2B84B), 0 0 8px var(--pick, #F2B84B);
+    transition: box-shadow .2s ease;
   }
+  .ip-field .em-color:hover { box-shadow: 0 0 0 3px rgba(255,255,255,0.1), 0 0 26px var(--pick, #F2B84B), 0 0 10px var(--pick, #F2B84B); }
   .em-color::-webkit-color-swatch-wrapper { padding: 0; }
   .em-color::-webkit-color-swatch { border: none; border-radius: 50%; }
   .em-color::-moz-color-swatch { border: none; border-radius: 50%; }
@@ -448,7 +451,7 @@
   <div class="ip-field">
     <label>此刻的心情 <span class="em-hint">（想写什么写什么，再选个颜色）</span></label>
     <div class="em-row">
-      <input id="emotionInput" placeholder="例如：想下班 / 刚分手 / 今天也蛮好的" autocomplete="off" />
+      <input id="emotionInput" placeholder="在想些什么？" autocomplete="off" />
       <input type="color" id="emotionColor" class="em-color" value="#F2B84B" title="选一个代表此刻的颜色" />
     </div>
   </div>
@@ -1178,6 +1181,13 @@ const panel = document.getElementById("inputPanel");
 const nameInput = document.getElementById("nameInput");
 const emotionInput = document.getElementById("emotionInput");
 const emotionColor = document.getElementById("emotionColor");
+
+// 取色器外圈光跟着所选颜色走
+function syncColorGlow() {
+  emotionColor.style.setProperty("--pick", emotionColor.value || "#F2B84B");
+}
+emotionColor.addEventListener("input", syncColorGlow);
+syncColorGlow();
 const noteInput = document.getElementById("noteInput");
 const ipError = document.getElementById("ipError");
 const ipTitle = document.getElementById("ipTitle");
@@ -1375,7 +1385,7 @@ function openPanel(name) {
   ipDelete.style.display = "none";
   ipSubmit.textContent = "提交";
   nameInput.value = name || "";
-  emotionInput.value = ""; emotionColor.value = "#F2B84B"; noteInput.value = "";
+  emotionInput.value = ""; emotionColor.value = "#F2B84B"; syncColorGlow(); noteInput.value = "";
   timeInput.value = todayDateStr();
   updateDateField();
   sceneSelect.value = "";
@@ -1392,7 +1402,7 @@ function openEditPanel(p) {
   ipSubmit.textContent = "保存";
   nameInput.value = p.name || "";
   emotionInput.value = p.emotion || ((p.from || p.to) ? (p.from || "") + " → " + (p.to || "") : "");
-  emotionColor.value = toHex(p.color);
+  emotionColor.value = toHex(p.color); syncColorGlow();
   noteInput.value = p.note || "";
   timeInput.value = p.time || "";
   updateDateField();
